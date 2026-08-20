@@ -1,0 +1,909 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TIRE+ Orleans — Sales Reports</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='46' fill='%23d61f26'/><circle cx='50' cy='50' r='20' fill='white'/></svg>">
+<style>
+  :root {
+    --brand: #d61f26;
+    --ink: #1b1d21;
+    --muted: #6b7280;
+    --bg: #eef0f3;
+    --panel: #ffffff;
+    --border: #d8dbe1;
+    --soft: #f6f7f9;
+    --good: #0f7b3d;
+    --bad: #b42318;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font: 14px/1.45 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+
+  /* ---------- App chrome (never printed) ---------- */
+  .appbar {
+    background: #17191d;
+    color: #fff;
+    display: flex; align-items: center; gap: 14px;
+    padding: 10px 18px;
+    position: sticky; top: 0; z-index: 20;
+  }
+  .brand { display: flex; align-items: baseline; gap: 8px; white-space: nowrap; }
+  .brand .tire { font-size: 19px; font-weight: 800; letter-spacing: .5px; }
+  .brand .plus { color: var(--brand); font-weight: 800; font-size: 19px; }
+  .brand .loc { color: #b7bcc5; font-size: 13px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase; }
+  .appbar .spacer { flex: 1; }
+  .btn {
+    border: 1px solid var(--border);
+    background: #fff; color: var(--ink);
+    border-radius: 8px; padding: 7px 14px;
+    font-size: 13px; font-weight: 600;
+    cursor: pointer;
+    display: inline-flex; align-items: center; gap: 7px;
+  }
+  .btn:hover { background: var(--soft); }
+  .btn.primary { background: var(--brand); border-color: var(--brand); color: #fff; }
+  .btn.primary:hover { background: #b8161d; }
+  .btn.ghost { background: transparent; border-color: #3a3e46; color: #e6e8ec; }
+  .btn.ghost:hover { background: #262a30; }
+  .btn.danger { color: var(--bad); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+
+  .controls {
+    max-width: 1160px; margin: 16px auto 0; padding: 0 16px;
+    display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end;
+  }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; }
+  .field select, .field input[type="date"], .field input[type="search"] {
+    border: 1px solid var(--border); border-radius: 8px;
+    background: #fff; color: var(--ink);
+    padding: 7px 9px; font-size: 13px; min-height: 34px;
+  }
+  .field input[type="search"] { width: 220px; }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: #fff; }
+  .seg button {
+    border: 0; background: transparent; padding: 7px 12px;
+    font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer;
+  }
+  .seg button + button { border-left: 1px solid var(--border); }
+  .seg button.on { background: var(--ink); color: #fff; }
+  .monthnav { display: inline-flex; align-items: center; gap: 6px; }
+  .monthnav .btn { padding: 7px 10px; }
+
+  .summary {
+    max-width: 1160px; margin: 14px auto 0; padding: 0 16px;
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;
+  }
+  .card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px 14px;
+  }
+  .card .k { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; }
+  .card .v { font-size: 20px; font-weight: 800; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .card .s { font-size: 11px; color: var(--muted); margin-top: 1px; }
+  .card .v.neg { color: var(--bad); }
+
+  .paper-wrap { max-width: 1160px; margin: 16px auto 60px; padding: 0 16px; }
+  .sheet {
+    background: #fff; border: 1px solid var(--border); border-radius: 4px;
+    box-shadow: 0 2px 14px rgba(15, 17, 20, .08);
+    padding: 34px 36px 28px;
+    overflow-x: auto;
+  }
+
+  /* ---------- The report (screen + print) ---------- */
+  .rpt-title { text-align: center; font-size: 21px; font-weight: 800; margin: 0 0 2px; }
+  .rpt-range { text-align: center; font-size: 13px; margin: 0 0 16px; }
+  .rpt-table { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 940px; }
+  .rpt-table th {
+    text-align: left; font-weight: 700; font-size: 11px;
+    border-top: 1.5px solid var(--ink); border-bottom: 1.5px solid var(--ink);
+    padding: 5px 5px; white-space: nowrap;
+  }
+  .rpt-table td { padding: 4px 5px; vertical-align: top; }
+  .rpt-table .num, .rpt-table th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .rpt-table tbody.grp tr.inv:nth-child(even) td { background: #fafbfc; }
+  .rpt-table td.neg { color: var(--bad); }
+  tr.cust-name td { font-weight: 700; padding-top: 8px; font-size: 12.5px; }
+  tr.subtotal td { font-weight: 700; border-top: 1px solid #9aa0aa; border-bottom: 1px solid #e3e5ea; }
+  tr.subtotal td.lbl { text-align: right; }
+  tr.grand td { font-weight: 800; border-top: 2px solid var(--ink); border-bottom: 2.5px double var(--ink); font-size: 12.5px; padding-top: 6px; padding-bottom: 6px; }
+  tr.grand td.lbl { text-align: right; }
+  .rpt-footer { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-top: 14px; }
+  .rpt-empty { text-align: center; color: var(--muted); padding: 30px 0 20px; font-size: 14px; }
+
+  /* ---------- Empty state / drop zone ---------- */
+  .empty {
+    text-align: center; padding: 60px 20px 70px;
+  }
+  .empty h2 { margin: 0 0 6px; font-size: 20px; }
+  .empty p { margin: 4px 0; color: var(--muted); }
+  .empty .bigdrop {
+    margin: 22px auto 0; max-width: 520px;
+    border: 2px dashed #b9bfc9; border-radius: 14px;
+    padding: 36px 24px; background: var(--soft);
+  }
+  .empty .bigdrop strong { font-size: 15px; }
+  .empty .actions { margin-top: 16px; display: flex; gap: 10px; justify-content: center; }
+  .linklike { background: none; border: none; color: var(--brand); font-size: 13px; font-weight: 600; cursor: pointer; text-decoration: underline; padding: 0; }
+
+  .drop-overlay {
+    position: fixed; inset: 0; z-index: 50; display: none;
+    background: rgba(23, 25, 29, .82); color: #fff;
+    align-items: center; justify-content: center;
+    font-size: 22px; font-weight: 700;
+    border: 6px dashed rgba(255,255,255,.5);
+  }
+  .drop-overlay.on { display: flex; }
+
+  .datastrip {
+    max-width: 1160px; margin: 10px auto 0; padding: 0 16px;
+    font-size: 12px; color: var(--muted);
+    display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
+  }
+  .datastrip .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--good); display: inline-block; margin-right: 5px; }
+
+  #toast {
+    position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%) translateY(20px);
+    background: #17191d; color: #fff; padding: 10px 18px; border-radius: 10px;
+    font-size: 13px; opacity: 0; pointer-events: none; transition: all .25s ease; z-index: 60;
+    max-width: 80vw; text-align: center;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* ---------- Print ---------- */
+  @page { size: A4 portrait; margin: 12mm 9mm 12mm; }
+  @media print {
+    body { background: #fff; }
+    .no-print, #toast, .drop-overlay { display: none !important; }
+    .paper-wrap { max-width: none; margin: 0; padding: 0; }
+    .sheet { border: 0; box-shadow: none; border-radius: 0; padding: 0; overflow: visible; }
+    .rpt-table { font-size: 8.6px; min-width: 0; }
+    .rpt-table th { font-size: 8.4px; padding: 3px 3px; }
+    .rpt-table td { padding: 2.4px 3px; }
+    tr.cust-name td { font-size: 8.8px; padding-top: 5px; }
+    tr.grand td { font-size: 8.8px; }
+    .rpt-table tbody.grp tr.inv:nth-child(even) td { background: none; }
+    .rpt-table td.neg { color: #000; }
+    .rpt-title { font-size: 16px; }
+    .rpt-range { font-size: 10.5px; margin-bottom: 10px; }
+    .rpt-footer { font-size: 8.5px; color: #000; }
+    thead { display: table-header-group; }
+    tbody.grp { page-break-inside: avoid; break-inside: avoid; }
+    tr { page-break-inside: avoid; break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<header class="appbar no-print">
+  <div class="brand">
+    <span class="tire">TIRE<span class="plus">+</span></span>
+    <span class="loc">Orleans · Sales Reports</span>
+  </div>
+  <div class="spacer"></div>
+  <button class="btn ghost" id="btnImport" title="Import one or more sales report CSV exports">⬆ Import CSV</button>
+  <button class="btn ghost" id="btnExport" title="Download the currently filtered rows as a clean CSV">⬇ Export filtered</button>
+  <button class="btn ghost danger" id="btnClear" title="Remove all imported data from this browser">Clear data</button>
+  <button class="btn primary" id="btnPrint">🖨 Print report</button>
+</header>
+
+<section class="controls no-print" id="controls">
+  <div class="field">
+    <label>Period</label>
+    <div class="seg" id="segPeriod">
+      <button data-p="month">Month</button>
+      <button data-p="year">Full year</button>
+      <button data-p="range">Date range</button>
+      <button data-p="all">All data</button>
+    </div>
+  </div>
+  <div class="field" id="fMonth">
+    <label>Month</label>
+    <div class="monthnav">
+      <button class="btn" id="prevMonth" title="Previous month">‹</button>
+      <select id="selMonth"></select>
+      <select id="selYear"></select>
+      <button class="btn" id="nextMonth" title="Next month">›</button>
+    </div>
+  </div>
+  <div class="field" id="fYearOnly" style="display:none">
+    <label>Year</label>
+    <select id="selYear2"></select>
+  </div>
+  <div class="field" id="fFrom" style="display:none">
+    <label>From</label>
+    <input type="date" id="dateFrom">
+  </div>
+  <div class="field" id="fTo" style="display:none">
+    <label>To</label>
+    <input type="date" id="dateTo">
+  </div>
+  <div class="field">
+    <label>Type</label>
+    <select id="selType"><option value="">All types</option></select>
+  </div>
+  <div class="field">
+    <label>Search</label>
+    <input type="search" id="inpSearch" placeholder="Customer, ref # or license…">
+  </div>
+  <div class="field">
+    <label>Layout</label>
+    <div class="seg" id="segView">
+      <button data-v="customer">By customer</button>
+      <button data-v="date">By date</button>
+    </div>
+  </div>
+</section>
+
+<section class="datastrip no-print" id="datastrip"></section>
+<section class="summary no-print" id="summary"></section>
+
+<main class="paper-wrap">
+  <div class="sheet" id="sheet"></div>
+</main>
+
+<div class="drop-overlay" id="dropOverlay">Drop CSV file(s) to import</div>
+<input type="file" id="fileInput" accept=".csv,text/csv" multiple hidden>
+<div id="toast"></div>
+
+<script>
+/* =====================================================================
+   CORE LOGIC — pure functions, no DOM access (testable in Node)
+   ===================================================================== */
+
+// RFC-4180-ish CSV parser: quotes, escaped quotes, CR/LF/CRLF, BOM.
+function parseCsv(text) {
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+  const rows = [];
+  let row = [], field = '', inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQ) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; }
+        else inQ = false;
+      } else field += c;
+    } else if (c === '"') {
+      inQ = true;
+    } else if (c === ',') {
+      row.push(field); field = '';
+    } else if (c === '\n' || c === '\r') {
+      if (c === '\r' && text[i + 1] === '\n') i++;
+      row.push(field); field = '';
+      rows.push(row); row = [];
+    } else {
+      field += c;
+    }
+  }
+  if (field !== '' || row.length) { row.push(field); rows.push(row); }
+  return rows;
+}
+
+// Column layout of the point-of-sale "Sales Report" CSV export.
+const FALLBACK_COLS = { ref: 0, date: 4, type: 5, customer: 6, advisor: 7, license: 8, exHst: 10, hst: 11, dc: 12, total: 13, cost: 14, profit: 15 };
+
+const HEADER_ALIASES = {
+  ref:      ['ref', 'ref #', 'reference', 'invoice #', 'invoice'],
+  date:     ['date', 'invoice date'],
+  type:     ['type', 'doc type'],
+  customer: ['customer', 'customer name', 'client'],
+  advisor:  ['service advisor', 'advisor'],
+  license:  ['license', 'licence', 'license plate', 'plate'],
+  exHst:    ['ex hst', 'ex. hst', 'ex-hst', 'subtotal', 'amount ex hst'],
+  hst:      ['hst', 'tax', 'gst/hst'],
+  dc:       ['d/c', 'dc', 'discount'],
+  total:    ['total', 'total inc hst'],
+  cost:     ['cost ex. hst', 'cost ex hst', 'cost', 'cost ex. tax'],
+  profit:   ['profit', 'gross profit'],
+};
+
+// Locate a header row ("Ref", "Date", "Customer"…) and map column indexes.
+function findColumns(rows) {
+  const scan = Math.min(rows.length, 80);
+  for (let i = 0; i < scan; i++) {
+    const cells = rows[i].map(c => String(c).trim().toLowerCase());
+    if (cells.includes('ref') && cells.includes('date') && cells.includes('customer')) {
+      const map = {};
+      for (const key of Object.keys(HEADER_ALIASES)) {
+        for (let j = 0; j < cells.length; j++) {
+          if (HEADER_ALIASES[key].includes(cells[j])) { map[key] = j; break; }
+        }
+      }
+      if (map.ref != null && map.date != null && map.customer != null) return map;
+    }
+  }
+  return null;
+}
+
+function parseDateCell(s) {
+  s = String(s || '').trim();
+  let m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(s);       // MM/DD/YYYY
+  if (m) return { y: +m[3], mo: +m[1], d: +m[2] };
+  m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(s);             // YYYY-MM-DD
+  if (m) return { y: +m[1], mo: +m[2], d: +m[3] };
+  return null;
+}
+
+function dateKeyOf(y, mo, d) { return y * 10000 + mo * 100 + d; }
+
+function parseMoney(s) {
+  if (typeof s === 'number') return s;
+  s = String(s || '').trim();
+  if (!s) return 0;
+  let neg = false;
+  if (/^\(.*\)$/.test(s)) { neg = true; s = s.slice(1, -1); }
+  s = s.replace(/[$,\s]/g, '');
+  if (s.startsWith('-')) { neg = true; s = s.slice(1); }
+  const v = parseFloat(s);
+  if (!isFinite(v)) return 0;
+  return neg ? -v : v;
+}
+
+// Pull real invoice/credit rows out of a raw report export, ignoring the
+// title block, repeated page headers, per-customer subtotal rows, grand
+// total row and "Page x of y" footers.
+function extractInvoices(rows) {
+  const cols = findColumns(rows) || FALLBACK_COLS;
+  const out = [];
+  for (const r of rows) {
+    const ref = String(r[cols.ref] || '').trim();
+    if (!/^\d+$/.test(ref)) continue;
+    const dt = parseDateCell(r[cols.date]);
+    if (!dt) continue;
+    const get = k => (cols[k] == null ? '' : String(r[cols[k]] || '').trim());
+    out.push({
+      ref,
+      y: dt.y, mo: dt.mo, d: dt.d,
+      dateKey: dateKeyOf(dt.y, dt.mo, dt.d),
+      type: get('type') || 'Invoice',
+      customer: get('customer') || '(No customer)',
+      advisor: get('advisor'),
+      license: get('license'),
+      exHst: parseMoney(get('exHst')),
+      hst: parseMoney(get('hst')),
+      dc: parseMoney(get('dc')),
+      total: parseMoney(get('total')),
+      cost: parseMoney(get('cost')),
+      profit: parseMoney(get('profit')),
+    });
+  }
+  return out;
+}
+
+function sumRows(rows) {
+  const t = { exHst: 0, hst: 0, dc: 0, total: 0, cost: 0, profit: 0 };
+  for (const r of rows) {
+    t.exHst += r.exHst; t.hst += r.hst; t.dc += r.dc;
+    t.total += r.total; t.cost += r.cost; t.profit += r.profit;
+  }
+  return t;
+}
+
+// GP% as the source system computes it: profit ÷ (Ex HST − D/C).
+function gpPercent(exHst, dc, profit) {
+  const den = exHst - dc;
+  if (Math.abs(den) < 1e-9) return 0;
+  return (profit / den) * 100;
+}
+
+function byCustomerName(a, b) {
+  const la = a.toLowerCase(), lb = b.toLowerCase();
+  return la < lb ? -1 : la > lb ? 1 : 0;
+}
+
+function byDateThenRef(a, b) {
+  return (a.dateKey - b.dateKey) || (parseInt(a.ref, 10) - parseInt(b.ref, 10));
+}
+
+// filters: { fromKey, toKey, search, type, groupBy: 'customer'|'date' }
+function buildReport(invoices, filters) {
+  const f = filters || {};
+  const q = (f.search || '').trim().toLowerCase();
+  const rows = invoices.filter(r => {
+    if (f.fromKey != null && r.dateKey < f.fromKey) return false;
+    if (f.toKey != null && r.dateKey > f.toKey) return false;
+    if (f.type && r.type !== f.type) return false;
+    if (q && !(r.customer.toLowerCase().includes(q) ||
+               r.ref.includes(q) ||
+               r.license.toLowerCase().includes(q))) return false;
+    return true;
+  });
+
+  const totals = sumRows(rows);
+  const customers = new Set(rows.map(r => r.customer.toLowerCase()));
+  const report = {
+    rows,
+    totals,
+    gp: gpPercent(totals.exHst, totals.dc, totals.profit),
+    invoiceCount: rows.filter(r => r.type === 'Invoice').length,
+    creditCount: rows.filter(r => r.type === 'Credit').length,
+    customerCount: customers.size,
+    groups: null,
+  };
+
+  if ((f.groupBy || 'customer') === 'customer') {
+    const map = new Map();
+    for (const r of rows) {
+      const key = r.customer.toLowerCase();
+      if (!map.has(key)) map.set(key, { name: r.customer, rows: [] });
+      map.get(key).rows.push(r);
+    }
+    const groups = [...map.values()].sort((a, b) => byCustomerName(a.name, b.name));
+    for (const g of groups) {
+      g.rows.sort(byDateThenRef);
+      g.totals = sumRows(g.rows);
+      g.gp = gpPercent(g.totals.exHst, g.totals.dc, g.totals.profit);
+    }
+    report.groups = groups;
+  } else {
+    report.rows = rows.slice().sort(byDateThenRef);
+  }
+  return report;
+}
+
+// Formats amounts the way the source report does: $-58.71, no thousands separators.
+function fmtMoney(v) {
+  let r = Math.round(v * 100) / 100;
+  if (Math.abs(r) < 0.005) r = 0;
+  const sign = r < 0 ? '-' : '';
+  return '$' + sign + Math.abs(r).toFixed(2);
+}
+
+function fmtGp(v) { return (Math.abs(v) < 0.005 ? 0 : v).toFixed(2); }
+
+function fmtDateMdy(y, mo, d) {
+  const p = n => String(n).padStart(2, '0');
+  return p(mo) + '/' + p(d) + '/' + y;
+}
+
+function daysInMonth(y, mo) { return new Date(y, mo, 0).getDate(); }
+
+/* ===================== END CORE LOGIC ===================== */
+
+/* =====================================================================
+   Storage
+   ===================================================================== */
+const STORE_KEY = 'tireplusSales.data.v1';
+const FILTER_KEY = 'tireplusSales.filters.v1';
+
+let store = { invoices: [], files: [] };   // files: [{name, count, at}]
+let persistable = true;
+
+function loadStore() {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (raw) {
+      const s = JSON.parse(raw);
+      if (s && Array.isArray(s.invoices)) store = { invoices: s.invoices, files: s.files || [] };
+    }
+  } catch (e) { /* corrupted or unavailable — start fresh */ }
+}
+
+function saveStore() {
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify(store));
+    persistable = true;
+  } catch (e) {
+    persistable = false;
+    toast('Data is loaded for this session, but is too large to remember between visits.');
+  }
+}
+
+function mergeInvoices(newRows, fileName) {
+  const byRef = new Map(store.invoices.map(r => [r.ref, r]));
+  let added = 0, updated = 0;
+  for (const r of newRows) {
+    if (byRef.has(r.ref)) updated++; else added++;
+    byRef.set(r.ref, r);
+  }
+  store.invoices = [...byRef.values()];
+  store.files = store.files.filter(f => f.name !== fileName);
+  store.files.push({ name: fileName, count: newRows.length, at: new Date().toISOString().slice(0, 10) });
+  saveStore();
+  return { added, updated };
+}
+
+/* =====================================================================
+   Filter state + UI
+   ===================================================================== */
+const $ = id => document.getElementById(id);
+const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+let state = { period: 'month', y: null, mo: null, from: '', to: '', search: '', type: '', view: 'customer' };
+
+function loadFilters() {
+  try {
+    const raw = localStorage.getItem(FILTER_KEY);
+    if (raw) state = Object.assign(state, JSON.parse(raw));
+  } catch (e) { /* ignore */ }
+}
+function saveFilters() {
+  try { localStorage.setItem(FILTER_KEY, JSON.stringify(state)); } catch (e) { /* ignore */ }
+}
+
+function dataSpan() {
+  if (!store.invoices.length) return null;
+  let min = store.invoices[0], max = store.invoices[0];
+  for (const r of store.invoices) {
+    if (r.dateKey < min.dateKey) min = r;
+    if (r.dateKey > max.dateKey) max = r;
+  }
+  return { min, max };
+}
+
+function ensureValidState() {
+  const span = dataSpan();
+  if (!span) return;
+  const years = [...new Set(store.invoices.map(r => r.y))].sort();
+  if (state.y == null || !years.includes(state.y)) { state.y = span.max.y; state.mo = span.max.mo; }
+  if (state.mo == null || state.mo < 1 || state.mo > 12) state.mo = span.max.mo;
+  const iso = r => `${r.y}-${String(r.mo).padStart(2,'0')}-${String(r.d).padStart(2,'0')}`;
+  if (!state.from) state.from = iso(span.min);
+  if (!state.to) state.to = iso(span.max);
+}
+
+// Effective inclusive date range for the current period selection.
+function effectiveRange() {
+  const span = dataSpan();
+  if (state.period === 'month' && state.y != null) {
+    return { from: { y: state.y, mo: state.mo, d: 1 }, to: { y: state.y, mo: state.mo, d: daysInMonth(state.y, state.mo) } };
+  }
+  if (state.period === 'year' && state.y != null) {
+    return { from: { y: state.y, mo: 1, d: 1 }, to: { y: state.y, mo: 12, d: 31 } };
+  }
+  if (state.period === 'range' && state.from && state.to) {
+    const p = s => { const [y, mo, d] = s.split('-').map(Number); return { y, mo, d }; };
+    return { from: p(state.from), to: p(state.to) };
+  }
+  if (span) {
+    return { from: { y: span.min.y, mo: span.min.mo, d: span.min.d }, to: { y: span.max.y, mo: span.max.mo, d: span.max.d } };
+  }
+  const now = new Date();
+  const t = { y: now.getFullYear(), mo: now.getMonth() + 1, d: now.getDate() };
+  return { from: t, to: t };
+}
+
+function rangeLabel() {
+  if (state.period === 'month' && state.y != null) return MONTH_NAMES[state.mo - 1] + ' ' + state.y;
+  if (state.period === 'year' && state.y != null) return 'Year ' + state.y;
+  const r = effectiveRange();
+  return fmtDateMdy(r.from.y, r.from.mo, r.from.d) + ' – ' + fmtDateMdy(r.to.y, r.to.mo, r.to.d);
+}
+
+function currentReport() {
+  const r = effectiveRange();
+  return buildReport(store.invoices, {
+    fromKey: dateKeyOf(r.from.y, r.from.mo, r.from.d),
+    toKey: dateKeyOf(r.to.y, r.to.mo, r.to.d),
+    search: state.search,
+    type: state.type,
+    groupBy: state.view,
+  });
+}
+
+/* ---------- rendering ---------- */
+const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+function moneyTd(v, cls) {
+  return `<td class="num${v < -0.004 ? ' neg' : ''}${cls ? ' ' + cls : ''}">${fmtMoney(v)}</td>`;
+}
+
+function invoiceTr(r) {
+  return `<tr class="inv">
+    <td>${esc(r.ref)}</td>
+    <td>${fmtDateMdy(r.y, r.mo, r.d)}</td>
+    <td>${esc(r.type)}</td>
+    <td>${esc(r.customer)}</td>
+    <td>${esc(r.advisor)}</td>
+    <td>${esc(r.license)}</td>
+    ${moneyTd(r.exHst)}${moneyTd(r.hst)}${moneyTd(r.dc)}${moneyTd(r.total)}${moneyTd(r.cost)}${moneyTd(r.profit)}
+    <td class="num${r.profit < -0.004 ? ' neg' : ''}">${fmtGp(gpPercent(r.exHst, r.dc, r.profit))}</td>
+  </tr>`;
+}
+
+function totalsCells(t, gp) {
+  return `${moneyTd(t.exHst)}${moneyTd(t.hst)}${moneyTd(t.dc)}${moneyTd(t.total)}${moneyTd(t.cost)}${moneyTd(t.profit)}<td class="num">${fmtGp(gp)}</td>`;
+}
+
+function renderReport() {
+  const sheet = $('sheet');
+
+  if (!store.invoices.length) {
+    sheet.innerHTML = `
+      <div class="empty">
+        <h2>No sales data loaded yet</h2>
+        <p>Import the CSV export of your point-of-sale <strong>Sales Report</strong> to get started.</p>
+        <p>Everything stays in this browser — nothing is uploaded anywhere.</p>
+        <div class="bigdrop">
+          <strong>Drag &amp; drop your CSV file here</strong>
+          <p>or</p>
+          <div class="actions">
+            <button class="btn primary" id="btnImport2">Choose CSV file…</button>
+          </div>
+          <p style="margin-top:14px"><button class="linklike" id="btnDemo">…or try it with built-in demo data</button></p>
+        </div>
+      </div>`;
+    $('btnImport2').addEventListener('click', () => $('fileInput').click());
+    $('btnDemo').addEventListener('click', loadDemo);
+    $('summary').innerHTML = '';
+    $('datastrip').innerHTML = '';
+    return;
+  }
+
+  const rep = currentReport();
+  const r = effectiveRange();
+  const fromStr = fmtDateMdy(r.from.y, r.from.mo, r.from.d);
+  const toStr = fmtDateMdy(r.to.y, r.to.mo, r.to.d);
+  const today = new Date();
+  const printedStr = fmtDateMdy(today.getFullYear(), today.getMonth() + 1, today.getDate());
+
+  const head = `<thead><tr>
+      <th style="width:6%">Ref</th><th style="width:8%">Date</th><th style="width:6%">Type</th>
+      <th style="width:17%">Customer</th><th style="width:8%">Service Advisor</th><th style="width:8%">License</th>
+      <th class="num" style="width:8%">Ex HST</th><th class="num" style="width:6.5%">HST</th><th class="num" style="width:6.5%">D/C</th>
+      <th class="num" style="width:8%">Total</th><th class="num" style="width:8%">Cost Ex. HST</th><th class="num" style="width:8%">Profit</th>
+      <th class="num" style="width:5%">GP%</th>
+    </tr></thead>`;
+
+  let body = '';
+  if (rep.groups) {
+    for (const g of rep.groups) {
+      body += `<tbody class="grp">
+        <tr class="cust-name"><td colspan="13">${esc(g.name)}</td></tr>
+        ${g.rows.map(invoiceTr).join('')}
+        <tr class="subtotal"><td colspan="6" class="lbl">${esc(g.name)} Total:</td>${totalsCells(g.totals, g.gp)}</tr>
+      </tbody>`;
+    }
+  } else {
+    body = `<tbody class="grp">${rep.rows.map(invoiceTr).join('')}</tbody>`;
+  }
+  const grand = rep.rows.length
+    ? `<tbody><tr class="grand"><td colspan="6" class="lbl">Grand Total:</td>${totalsCells(rep.totals, rep.gp)}</tr></tbody>`
+    : '';
+
+  sheet.innerHTML = `
+    <h1 class="rpt-title">Sales Report</h1>
+    <p class="rpt-range">From: ${fromStr} &nbsp;To: ${toStr}${state.type ? ' &nbsp;·&nbsp; ' + esc(state.type) + 's only' : ''}${state.search ? ' &nbsp;·&nbsp; matching “' + esc(state.search) + '”' : ''}</p>
+    ${rep.rows.length
+      ? `<table class="rpt-table">${head}${body}${grand}</table>`
+      : `<div class="rpt-empty">No transactions match the current filters for this period.</div>`}
+    <div class="rpt-footer"><span>${rep.rows.length} transaction${rep.rows.length === 1 ? '' : 's'} · ${rep.customerCount} customer${rep.customerCount === 1 ? '' : 's'}</span><span>Date Printed: ${printedStr}</span></div>`;
+
+  renderSummary(rep);
+  renderDatastrip();
+}
+
+function renderSummary(rep) {
+  const t = rep.totals;
+  const cards = [
+    { k: 'Transactions', v: String(rep.rows.length), s: `${rep.invoiceCount} invoices · ${rep.creditCount} credits` },
+    { k: 'Customers', v: String(rep.customerCount), s: 'unique in period' },
+    { k: 'Sales (Ex HST)', v: locMoney(t.exHst), s: 'D/C ' + locMoney(t.dc) },
+    { k: 'Total (Inc HST)', v: locMoney(t.total), s: 'HST ' + locMoney(t.hst) },
+    { k: 'Profit', v: locMoney(t.profit), s: 'Cost ' + locMoney(t.cost), neg: t.profit < 0 },
+    { k: 'GP %', v: fmtGp(rep.gp) + '%', s: 'profit ÷ (Ex HST − D/C)', neg: rep.gp < 0 },
+  ];
+  $('summary').innerHTML = cards.map(c =>
+    `<div class="card"><div class="k">${c.k}</div><div class="v${c.neg ? ' neg' : ''}">${c.v}</div><div class="s">${c.s}</div></div>`).join('');
+}
+
+function locMoney(v) {
+  const r = Math.round(v * 100) / 100;
+  return (r < 0 ? '-$' : '$') + Math.abs(r).toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function renderDatastrip() {
+  const span = dataSpan();
+  const files = store.files.map(f => esc(f.name)).join(', ');
+  $('datastrip').innerHTML = span
+    ? `<span><span class="dot"></span>${store.invoices.length} transactions on file · ${fmtDateMdy(span.min.y, span.min.mo, span.min.d)} → ${fmtDateMdy(span.max.y, span.max.mo, span.max.d)}</span>
+       <span>Source: ${files}</span>${persistable ? '' : '<span style="color:var(--bad)">⚠ not persisted (too large for browser storage)</span>'}`
+    : '';
+}
+
+/* ---------- controls ---------- */
+function renderControls() {
+  const has = store.invoices.length > 0;
+  $('controls').style.display = has ? '' : 'none';
+  $('btnExport').disabled = !has;
+  $('btnClear').disabled = !has;
+  $('btnPrint').disabled = !has;
+  if (!has) return;
+
+  document.querySelectorAll('#segPeriod button').forEach(b => b.classList.toggle('on', b.dataset.p === state.period));
+  document.querySelectorAll('#segView button').forEach(b => b.classList.toggle('on', b.dataset.v === state.view));
+  $('fMonth').style.display = state.period === 'month' ? '' : 'none';
+  $('fYearOnly').style.display = state.period === 'year' ? '' : 'none';
+  $('fFrom').style.display = $('fTo').style.display = state.period === 'range' ? '' : 'none';
+
+  const years = [...new Set(store.invoices.map(r => r.y))].sort();
+  const monthsWithData = new Set(store.invoices.filter(r => r.y === state.y).map(r => r.mo));
+  $('selMonth').innerHTML = MONTH_NAMES.map((n, i) =>
+    `<option value="${i + 1}"${i + 1 === state.mo ? ' selected' : ''}>${n}${monthsWithData.has(i + 1) ? '' : ' —'}</option>`).join('');
+  const yearOpts = years.map(y => `<option value="${y}"${y === state.y ? ' selected' : ''}>${y}</option>`).join('');
+  $('selYear').innerHTML = yearOpts;
+  $('selYear2').innerHTML = yearOpts;
+
+  const types = [...new Set(store.invoices.map(r => r.type))].sort();
+  $('selType').innerHTML = `<option value="">All types</option>` +
+    types.map(t => `<option value="${esc(t)}"${t === state.type ? ' selected' : ''}>${esc(t)}s only</option>`).join('');
+  if (document.activeElement !== $('inpSearch')) $('inpSearch').value = state.search;
+  $('dateFrom').value = state.from;
+  $('dateTo').value = state.to;
+}
+
+function rerender() {
+  ensureValidState();
+  saveFilters();
+  renderControls();
+  renderReport();
+}
+
+function shiftMonth(delta) {
+  let y = state.y, mo = state.mo + delta;
+  if (mo < 1) { mo = 12; y--; }
+  if (mo > 12) { mo = 1; y++; }
+  state.y = y; state.mo = mo;
+  rerender();
+}
+
+/* ---------- import / export ---------- */
+function importFiles(fileList) {
+  const files = [...fileList].filter(f => /\.csv$/i.test(f.name) || f.type === 'text/csv' || f.type === 'application/vnd.ms-excel');
+  if (!files.length) { toast('Please choose a .csv file (the Sales Report export).'); return; }
+  let done = 0, imported = 0, added = 0, updated = 0, failed = [];
+  for (const f of files) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const invs = extractInvoices(parseCsv(String(reader.result)));
+        if (!invs.length) { failed.push(f.name); }
+        else {
+          const res = mergeInvoices(invs, f.name);
+          imported += invs.length; added += res.added; updated += res.updated;
+        }
+      } catch (e) { failed.push(f.name); }
+      if (++done === files.length) {
+        if (imported) {
+          // Jump to the most recent month in the newly loaded data.
+          const span = dataSpan();
+          if (span && state.period === 'month') { state.y = span.max.y; state.mo = span.max.mo; }
+          toast(`Imported ${imported} transactions (${added} new, ${updated} updated).` + (failed.length ? ` Could not read: ${failed.join(', ')}` : ''));
+        } else {
+          toast(`No sales rows found in ${failed.join(', ') || 'the selected file(s)'} — is it the Sales Report CSV export?`);
+        }
+        rerender();
+      }
+    };
+    reader.onerror = () => { failed.push(f.name); if (++done === files.length) rerender(); };
+    reader.readAsText(f);
+  }
+}
+
+function exportFiltered() {
+  const rep = currentReport();
+  const rows = rep.groups ? rep.groups.flatMap(g => g.rows) : rep.rows;
+  const q = s => '"' + String(s).replace(/"/g, '""') + '"';
+  const lines = [['Ref', 'Date', 'Type', 'Customer', 'Service Advisor', 'License', 'Ex HST', 'HST', 'D/C', 'Total', 'Cost Ex. HST', 'Profit', 'GP%'].join(',')];
+  for (const r of rows) {
+    lines.push([r.ref, fmtDateMdy(r.y, r.mo, r.d), q(r.type), q(r.customer), q(r.advisor), q(r.license),
+      r.exHst.toFixed(2), r.hst.toFixed(2), r.dc.toFixed(2), r.total.toFixed(2), r.cost.toFixed(2), r.profit.toFixed(2),
+      fmtGp(gpPercent(r.exHst, r.dc, r.profit))].join(','));
+  }
+  const blob = new Blob([lines.join('\r\n')], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = ('sales-report-' + rangeLabel().toLowerCase().replace(/[^a-z0-9]+/g, '-') + '.csv').replace(/-+/g, '-');
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function clearData() {
+  if (!confirm('Remove all imported sales data from this browser? Your original CSV files are not affected.')) return;
+  store = { invoices: [], files: [] };
+  try { localStorage.removeItem(STORE_KEY); } catch (e) { /* ignore */ }
+  rerender();
+}
+
+let toastTimer;
+function toast(msg) {
+  const el = $('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 4200);
+}
+
+/* ---------- demo data (fictional) ---------- */
+const DEMO_CSV = `,,,,,,,,,,,,,Sales Report,,,
+,,,,,,,,,,,,,From: 01/01/2025 To: 02/28/2025,,,
+Ref,,,,Date,Type,Customer,Service Advisor,License ,,Ex HST,HST,D/C,Total,Cost Ex. HST,Profit,GP%
+Demo Customer A,,,,,,,,,,,,,,,,
+90001,,,,01/04/2025,Invoice,Demo Customer A,,DEMO001,,$663.94,$86.31,$0.00,$750.25,$326.98,$336.96,50.75
+90007,,,,02/11/2025,Invoice,Demo Customer A,,DEMO001,,$146.95,$19.10,$0.00,$166.05,$60.00,$86.95,59.17
+,,,,,Demo Customer A Total: ,,,,,$810.89,$105.41,$0.00,$916.30,$386.98,$423.91,52.28
+"Demo Fleet, Inc.",,,,,,,,,,,,,,,,
+90002,,,,01/07/2025,Invoice,"Demo Fleet, Inc.",001,FLEET12,,$1712.55,$213.93,$66.96,$1859.52,$1344.00,$301.59,18.33
+90005,,,,01/28/2025,Credit,"Demo Fleet, Inc.",001,FLEET12,,$-120.00,$-15.60,$0.00,$-135.60,$-80.00,$-40.00,33.33
+,,,,,"Demo Fleet, Inc. Total: ",,,,,$1592.55,$198.33,$66.96,$1723.92,$1264.00,$261.59,17.15
+Demo Customer B,,,,,,,,,,,,,,,,
+90003,,,,01/15/2025,Invoice,Demo Customer B,,DEMO212,,$402.05,$52.27,$0.00,$454.32,$269.57,$132.48,32.95
+90004,,,,01/18/2025,Invoice,Demo Customer B,,DEMO212,,$36.39,$4.73,$0.00,$41.12,$11.27,$25.12,69.03
+90008,,,,02/14/2025,Invoice,Demo Customer B,,DEMO212,,$82.95,$10.78,$0.00,$93.73,$30.00,$52.95,63.83
+Demo Customer C,,,,,,,,,,,,,,,,
+90006,,,,02/03/2025,Invoice,Demo Customer C,,DEMO933,,$0.00,$0.00,$0.00,$0.00,$58.71,$-58.71,0.00
+90009,,,,02/21/2025,Invoice,Demo Customer C,,DEMO933,,$530.95,$69.02,$0.00,$599.97,$275.52,$255.43,48.11
+Page ,1,of ,1,,,,,,Date Printed: 03/01/2025,,,,,,,`;
+
+function loadDemo() {
+  const invs = extractInvoices(parseCsv(DEMO_CSV));
+  mergeInvoices(invs, 'Demo data (built-in)');
+  const span = dataSpan();
+  if (span) { state.y = span.max.y; state.mo = span.max.mo; }
+  toast('Demo data loaded — this is fictional data just to explore the app.');
+  rerender();
+}
+
+/* ---------- wiring ---------- */
+function init() {
+  loadStore();
+  loadFilters();
+
+  $('btnImport').addEventListener('click', () => $('fileInput').click());
+  $('fileInput').addEventListener('change', e => { importFiles(e.target.files); e.target.value = ''; });
+  $('btnPrint').addEventListener('click', () => {
+    const old = document.title;
+    document.title = 'Sales Report — ' + rangeLabel();
+    window.print();
+    setTimeout(() => { document.title = old; }, 500);
+  });
+  $('btnExport').addEventListener('click', exportFiltered);
+  $('btnClear').addEventListener('click', clearData);
+
+  $('segPeriod').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    state.period = b.dataset.p; rerender();
+  });
+  $('segView').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    state.view = b.dataset.v; rerender();
+  });
+  $('prevMonth').addEventListener('click', () => shiftMonth(-1));
+  $('nextMonth').addEventListener('click', () => shiftMonth(1));
+  $('selMonth').addEventListener('change', e => { state.mo = +e.target.value; rerender(); });
+  $('selYear').addEventListener('change', e => { state.y = +e.target.value; rerender(); });
+  $('selYear2').addEventListener('change', e => { state.y = +e.target.value; rerender(); });
+  $('selType').addEventListener('change', e => { state.type = e.target.value; rerender(); });
+  $('dateFrom').addEventListener('change', e => { state.from = e.target.value; rerender(); });
+  $('dateTo').addEventListener('change', e => { state.to = e.target.value; rerender(); });
+  let searchTimer;
+  $('inpSearch').addEventListener('input', e => {
+    const v = e.target.value;   // capture now — the field may be re-rendered before the debounce fires
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => { state.search = v; rerender(); }, 180);
+  });
+
+  // Whole-window drag & drop.
+  let dragDepth = 0;
+  window.addEventListener('dragenter', e => { e.preventDefault(); if (++dragDepth === 1) $('dropOverlay').classList.add('on'); });
+  window.addEventListener('dragleave', e => { e.preventDefault(); if (--dragDepth <= 0) { dragDepth = 0; $('dropOverlay').classList.remove('on'); } });
+  window.addEventListener('dragover', e => e.preventDefault());
+  window.addEventListener('drop', e => {
+    e.preventDefault(); dragDepth = 0; $('dropOverlay').classList.remove('on');
+    if (e.dataTransfer && e.dataTransfer.files.length) importFiles(e.dataTransfer.files);
+  });
+
+  rerender();
+}
+
+init();
+</script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+# This repository is PUBLIC — real sales exports contain customer names,
+# license plates and financials, and must never be committed.
+#
+# Keep your real CSV exports in the (ignored) data/ folder, or anywhere
+# outside the repo. Only sample-data/ (fictional data) is tracked.
+data/
+Sales_Report*.csv
+Sales Report*.csv
+*sales_report*.csv
+!sample-data/*.csv
+
+# OS noise
+.DS_Store
+Thumbs.db
