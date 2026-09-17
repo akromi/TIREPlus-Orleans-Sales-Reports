@@ -7,6 +7,9 @@ data/
 Sales_Report*.csv
 Sales Report*.csv
 *sales_report*.csv
+TPWorkshop*.csv
+*Salesbreakup*.csv
+*SalesiItems*.csv
 !sample-data/*.csv
 
 # OS noise

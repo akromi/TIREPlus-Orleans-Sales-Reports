@@ -1,0 +1,14 @@
+,,,,,,,,,Item Sales Report,,,,,
+,,,,,,,,,From: 01/01/2025 To: 02/28/2025,,,,,
+Date,,Invoice Ref,,Item Code,Service Advisor,Description,Supplier,QOH,Qty Sold,Sell Price,,Unit Cost,,Cost
+,,,,,,,,,,,,,,
+01/07/25,,90002,,DEMO-TIRE1,,All-Season Tire 225/65R17,Demo Tire Supply,4.00,4.00,$824.00,,$154.00,,$616.00
+,,,,,,,,,4.00,,$824.00,,$154.00,$616.00
+,,,,,,,,,,,,,,
+01/04/25,,90001,,DEMO-PADS,,Ceramic Brake Pads Front,Demo Parts Co,2.00,1.00,$89.99,,$41.50,,$41.50
+02/11/25,,90007,,DEMO-PADS,,Ceramic Brake Pads Front,Demo Parts Co,1.00,1.00,$89.99,,$41.50,,$41.50
+,,,,,,,,,2.00,,$179.98,,$41.50,$83.00
+,,,,,,,,,,,,,,
+01/15/25,,90003,,DEMO-ALT,,Remanufactured Alternator,Demo Parts Co,0.00,1.00,$289.00,,$168.00,,$168.00
+,,,,,,,,,1.00,,$289.00,,$168.00,$168.00
+Page ,1,of ,1,,,,,,Date Printed: 03/01/2025,,,,,,,

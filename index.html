@@ -54,8 +54,22 @@
   .btn.danger { color: var(--bad); }
   .btn:disabled { opacity: .45; cursor: not-allowed; }
 
+  .tabsbar {
+    background: #fff; border-bottom: 1px solid var(--border);
+    display: flex; gap: 4px; padding: 0 18px;
+    position: sticky; top: 51px; z-index: 19;
+    overflow-x: auto;
+  }
+  .tabsbar button {
+    border: 0; background: none; cursor: pointer;
+    padding: 11px 14px 9px; font-size: 13.5px; font-weight: 700; color: var(--muted);
+    border-bottom: 3px solid transparent; white-space: nowrap;
+  }
+  .tabsbar button.on { color: var(--ink); border-bottom-color: var(--brand); }
+  .tabsbar button .cnt { font-weight: 600; color: var(--muted); font-size: 11.5px; margin-left: 4px; }
+
   .controls {
-    max-width: 1160px; margin: 16px auto 0; padding: 0 16px;
+    max-width: 1240px; margin: 16px auto 0; padding: 0 16px;
     display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end;
   }
   .field { display: flex; flex-direction: column; gap: 4px; }
@@ -65,7 +79,8 @@
     background: #fff; color: var(--ink);
     padding: 7px 9px; font-size: 13px; min-height: 34px;
   }
-  .field input[type="search"] { width: 220px; }
+  .field input[type="search"] { width: 230px; }
+  .checkline { display: flex; align-items: center; gap: 6px; min-height: 34px; font-size: 13px; font-weight: 600; color: var(--ink); }
   .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: #fff; }
   .seg button {
     border: 0; background: transparent; padding: 7px 12px;
@@ -77,7 +92,7 @@
   .monthnav .btn { padding: 7px 10px; }
 
   .summary {
-    max-width: 1160px; margin: 14px auto 0; padding: 0 16px;
+    max-width: 1240px; margin: 14px auto 0; padding: 0 16px;
     display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;
   }
   .card {
@@ -89,7 +104,7 @@
   .card .s { font-size: 11px; color: var(--muted); margin-top: 1px; }
   .card .v.neg { color: var(--bad); }
 
-  .paper-wrap { max-width: 1160px; margin: 16px auto 60px; padding: 0 16px; }
+  .paper-wrap { max-width: 1240px; margin: 16px auto 60px; padding: 0 16px; }
   .sheet {
     background: #fff; border: 1px solid var(--border); border-radius: 4px;
     box-shadow: 0 2px 14px rgba(15, 17, 20, .08);
@@ -100,6 +115,7 @@
   /* ---------- The report (screen + print) ---------- */
   .rpt-title { text-align: center; font-size: 21px; font-weight: 800; margin: 0 0 2px; }
   .rpt-range { text-align: center; font-size: 13px; margin: 0 0 16px; }
+  .rpt-note { text-align: center; font-size: 12px; color: var(--muted); margin: -10px 0 14px; }
   .rpt-table { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 940px; }
   .rpt-table th {
     text-align: left; font-weight: 700; font-size: 11px;
@@ -119,13 +135,11 @@
   .rpt-empty { text-align: center; color: var(--muted); padding: 30px 0 20px; font-size: 14px; }
 
   /* ---------- Empty state / drop zone ---------- */
-  .empty {
-    text-align: center; padding: 60px 20px 70px;
-  }
+  .empty { text-align: center; padding: 60px 20px 70px; }
   .empty h2 { margin: 0 0 6px; font-size: 20px; }
   .empty p { margin: 4px 0; color: var(--muted); }
   .empty .bigdrop {
-    margin: 22px auto 0; max-width: 520px;
+    margin: 22px auto 0; max-width: 560px;
     border: 2px dashed #b9bfc9; border-radius: 14px;
     padding: 36px 24px; background: var(--soft);
   }
@@ -143,7 +157,7 @@
   .drop-overlay.on { display: flex; }
 
   .datastrip {
-    max-width: 1160px; margin: 10px auto 0; padding: 0 16px;
+    max-width: 1240px; margin: 10px auto 0; padding: 0 16px;
     font-size: 12px; color: var(--muted);
     display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
   }
@@ -173,10 +187,12 @@
     .rpt-table td.neg { color: #000; }
     .rpt-title { font-size: 16px; }
     .rpt-range { font-size: 10.5px; margin-bottom: 10px; }
+    .rpt-note { font-size: 9px; margin: -6px 0 8px; color: #000; }
     .rpt-footer { font-size: 8.5px; color: #000; }
     thead { display: table-header-group; }
     tbody.grp { page-break-inside: avoid; break-inside: avoid; }
     tr { page-break-inside: avoid; break-inside: avoid; }
+    tbody.grp.big { page-break-inside: auto; break-inside: auto; }
   }
 </style>
 </head>
@@ -188,11 +204,17 @@
     <span class="loc">Orleans · Sales Reports</span>
   </div>
   <div class="spacer"></div>
-  <button class="btn ghost" id="btnImport" title="Import one or more sales report CSV exports">⬆ Import CSV</button>
-  <button class="btn ghost" id="btnExport" title="Download the currently filtered rows as a clean CSV">⬇ Export filtered</button>
+  <button class="btn ghost" id="btnImport" title="Import one or more report CSV exports (Sales, Sales Breakup, Item Sales)">⬆ Import CSV</button>
+  <button class="btn ghost" id="btnExport" title="Download the current view as a clean CSV">⬇ Export filtered</button>
   <button class="btn ghost danger" id="btnClear" title="Remove all imported data from this browser">Clear data</button>
   <button class="btn primary" id="btnPrint">🖨 Print report</button>
 </header>
+
+<nav class="tabsbar no-print" id="tabsbar">
+  <button data-t="sales">Sales report<span class="cnt" id="cntSales"></span></button>
+  <button data-t="breakup">Categories<span class="cnt" id="cntBreakup"></span></button>
+  <button data-t="items">Items<span class="cnt" id="cntItems"></span></button>
+</nav>
 
 <section class="controls no-print" id="controls">
   <div class="field">
@@ -225,20 +247,38 @@
     <label>To</label>
     <input type="date" id="dateTo">
   </div>
-  <div class="field">
+  <div class="field" id="fType">
     <label>Type</label>
     <select id="selType"><option value="">All types</option></select>
+  </div>
+  <div class="field" id="fCategory" style="display:none">
+    <label>Category</label>
+    <select id="selCategory"><option value="">All categories</option></select>
+  </div>
+  <div class="field" id="fSort" style="display:none">
+    <label>Sort items by</label>
+    <select id="selSort">
+      <option value="sell">Revenue</option>
+      <option value="qty">Qty sold</option>
+      <option value="profit">Profit</option>
+      <option value="margin">Margin %</option>
+      <option value="code">Item code</option>
+    </select>
   </div>
   <div class="field">
     <label>Search</label>
     <input type="search" id="inpSearch" placeholder="Customer, ref # or license…">
   </div>
-  <div class="field">
+  <div class="field" id="fView">
     <label>Layout</label>
     <div class="seg" id="segView">
       <button data-v="customer">By customer</button>
       <button data-v="date">By date</button>
     </div>
+  </div>
+  <div class="field" id="fTotalsOnly" style="display:none">
+    <label>Detail</label>
+    <label class="checkline"><input type="checkbox" id="chkTotalsOnly"> Totals only</label>
   </div>
 </section>
 
@@ -286,46 +326,12 @@ function parseCsv(text) {
   return rows;
 }
 
-// Column layout of the point-of-sale "Sales Report" CSV export.
-const FALLBACK_COLS = { ref: 0, date: 4, type: 5, customer: 6, advisor: 7, license: 8, exHst: 10, hst: 11, dc: 12, total: 13, cost: 14, profit: 15 };
-
-const HEADER_ALIASES = {
-  ref:      ['ref', 'ref #', 'reference', 'invoice #', 'invoice'],
-  date:     ['date', 'invoice date'],
-  type:     ['type', 'doc type'],
-  customer: ['customer', 'customer name', 'client'],
-  advisor:  ['service advisor', 'advisor'],
-  license:  ['license', 'licence', 'license plate', 'plate'],
-  exHst:    ['ex hst', 'ex. hst', 'ex-hst', 'subtotal', 'amount ex hst'],
-  hst:      ['hst', 'tax', 'gst/hst'],
-  dc:       ['d/c', 'dc', 'discount'],
-  total:    ['total', 'total inc hst'],
-  cost:     ['cost ex. hst', 'cost ex hst', 'cost', 'cost ex. tax'],
-  profit:   ['profit', 'gross profit'],
-};
-
-// Locate a header row ("Ref", "Date", "Customer"…) and map column indexes.
-function findColumns(rows) {
-  const scan = Math.min(rows.length, 80);
-  for (let i = 0; i < scan; i++) {
-    const cells = rows[i].map(c => String(c).trim().toLowerCase());
-    if (cells.includes('ref') && cells.includes('date') && cells.includes('customer')) {
-      const map = {};
-      for (const key of Object.keys(HEADER_ALIASES)) {
-        for (let j = 0; j < cells.length; j++) {
-          if (HEADER_ALIASES[key].includes(cells[j])) { map[key] = j; break; }
-        }
-      }
-      if (map.ref != null && map.date != null && map.customer != null) return map;
-    }
-  }
-  return null;
-}
-
 function parseDateCell(s) {
   s = String(s || '').trim();
   let m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(s);       // MM/DD/YYYY
   if (m) return { y: +m[3], mo: +m[1], d: +m[2] };
+  m = /^(\d{1,2})\/(\d{1,2})\/(\d{2})$/.exec(s);           // MM/DD/YY
+  if (m) { const yy = +m[3]; return { y: yy < 70 ? 2000 + yy : 1900 + yy, mo: +m[1], d: +m[2] }; }
   m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(s);             // YYYY-MM-DD
   if (m) return { y: +m[1], mo: +m[2], d: +m[3] };
   return null;
@@ -344,6 +350,63 @@ function parseMoney(s) {
   const v = parseFloat(s);
   if (!isFinite(v)) return 0;
   return neg ? -v : v;
+}
+
+/* ---------- format detection ---------- */
+// The three known point-of-sale exports, told apart by their title row
+// (or, failing that, by their header row).
+function detectFormat(rows) {
+  const scan = Math.min(rows.length, 12);
+  for (let i = 0; i < scan; i++) {
+    for (const c of rows[i]) {
+      const t = String(c).trim().toLowerCase();
+      if (t === 'item sales report') return 'items';
+      if (t === 'sales breakup report') return 'breakup';
+      if (t === 'sales report') return 'sales';
+    }
+  }
+  for (let i = 0; i < Math.min(rows.length, 80); i++) {
+    const cells = rows[i].map(c => String(c).trim().toLowerCase());
+    if (cells.includes('qty sold') && cells.includes('invoice ref')) return 'items';
+    if (cells.includes('make/model')) return 'breakup';
+    if (cells.includes('ref') && cells.includes('customer') && cells.includes('ex hst')) return 'sales';
+  }
+  return 'sales'; // legacy behavior: try the transactions extractor
+}
+
+/* ---------- Sales Report (transactions) ---------- */
+const FALLBACK_COLS = { ref: 0, date: 4, type: 5, customer: 6, advisor: 7, license: 8, exHst: 10, hst: 11, dc: 12, total: 13, cost: 14, profit: 15 };
+
+const HEADER_ALIASES = {
+  ref:      ['ref', 'ref #', 'reference', 'invoice #', 'invoice'],
+  date:     ['date', 'invoice date'],
+  type:     ['type', 'doc type'],
+  customer: ['customer', 'customer name', 'client'],
+  advisor:  ['service advisor', 'advisor'],
+  license:  ['license', 'licence', 'license plate', 'plate'],
+  exHst:    ['ex hst', 'ex. hst', 'ex-hst', 'subtotal', 'amount ex hst'],
+  hst:      ['hst', 'tax', 'gst/hst'],
+  dc:       ['d/c', 'dc', 'discount'],
+  total:    ['total', 'total inc hst'],
+  cost:     ['cost ex. hst', 'cost ex hst', 'cost', 'cost ex. tax'],
+  profit:   ['profit', 'gross profit'],
+};
+
+function findColumns(rows) {
+  const scan = Math.min(rows.length, 80);
+  for (let i = 0; i < scan; i++) {
+    const cells = rows[i].map(c => String(c).trim().toLowerCase());
+    if (cells.includes('ref') && cells.includes('date') && cells.includes('customer')) {
+      const map = {};
+      for (const key of Object.keys(HEADER_ALIASES)) {
+        for (let j = 0; j < cells.length; j++) {
+          if (HEADER_ALIASES[key].includes(cells[j])) { map[key] = j; break; }
+        }
+      }
+      if (map.ref != null && map.date != null && map.customer != null) return map;
+    }
+  }
+  return null;
 }
 
 // Pull real invoice/credit rows out of a raw report export, ignoring the
@@ -377,6 +440,91 @@ function extractInvoices(rows) {
   return out;
 }
 
+/* ---------- Sales Breakup Report (line items by category) ---------- */
+// Fixed layout (the export's header row is misaligned with its data by one
+// column around "Cost Ex.", so header-mapping cannot be trusted here):
+// 0=Ref 4=Date 5=Item Code 6=Description 7=Type 8=Customer 10=License
+// 11=Make/Model 12=Amount 14=Cost Ex. 15=HST 16=Profit.
+// Rows belong to the category named by the group-header line above them
+// (SUBLET REPAIR / LABOUR / STOCK / TIRES / CONSUMABLES).
+function extractBreakup(rows) {
+  const out = [];
+  const occ = new Map();
+  let category = 'UNCATEGORIZED';
+  for (const r of rows) {
+    const c0 = String(r[0] || '').trim();
+    const dt = r.length >= 17 ? parseDateCell(r[4]) : null;
+    if (/^\d+$/.test(c0) && dt) {
+      const t = i => String(r[i] || '').trim();
+      const row = {
+        ref: c0,
+        y: dt.y, mo: dt.mo, d: dt.d,
+        dateKey: dateKeyOf(dt.y, dt.mo, dt.d),
+        category,
+        code: t(5),
+        desc: t(6),
+        type: t(7) || 'Invoice',
+        customer: t(8),
+        license: t(10),
+        vehicle: t(11),
+        amount: parseMoney(t(12)),
+        cost: parseMoney(t(14)),
+        hst: parseMoney(t(15)),
+        profit: parseMoney(t(16)),
+      };
+      // Stable id: natural key + occurrence index, so re-importing the same
+      // or an overlapping export never duplicates rows, while genuinely
+      // repeated line items within one invoice are preserved.
+      const base = [row.ref, row.dateKey, row.code, row.desc, row.amount].join('|');
+      const n = (occ.get(base) || 0) + 1;
+      occ.set(base, n);
+      row.id = base + '#' + n;
+      out.push(row);
+    } else if (c0 && !/^\d+$/.test(c0) && !(r[4] && String(r[4]).trim()) &&
+               c0 !== 'Ref' && !c0.startsWith('Page') && !c0.startsWith('Grand') &&
+               !c0.startsWith('Date') && !c0.includes('Total:')) {
+      category = c0;
+    }
+  }
+  return out;
+}
+
+/* ---------- Item Sales Report (per-product sales) ---------- */
+// Layout: 0=Date(MM/DD/YY) 2=Invoice Ref 4=Item Code 5=Service Advisor
+// 6=Description 7=Supplier 8=QOH 9=Qty Sold 10=Sell Price 12=Unit Cost 14=Cost.
+// Sell Price and Cost are line totals; Unit Cost is per unit.
+function extractItems(rows) {
+  const out = [];
+  const occ = new Map();
+  for (const r of rows) {
+    if (r.length < 15) continue;
+    const dt = parseDateCell(r[0]);
+    const ref = String(r[2] || '').trim();
+    if (!dt || !/^\d+$/.test(ref)) continue;
+    const t = i => String(r[i] || '').trim();
+    const row = {
+      ref,
+      y: dt.y, mo: dt.mo, d: dt.d,
+      dateKey: dateKeyOf(dt.y, dt.mo, dt.d),
+      code: t(4),
+      advisor: t(5),
+      desc: t(6),
+      supplier: t(7),
+      qty: parseMoney(t(9)),
+      sell: parseMoney(t(10)),
+      unitCost: parseMoney(t(12)),
+      cost: parseMoney(t(14)),
+    };
+    const base = [row.ref, row.dateKey, row.code, row.sell].join('|');
+    const n = (occ.get(base) || 0) + 1;
+    occ.set(base, n);
+    row.id = base + '#' + n;
+    out.push(row);
+  }
+  return out;
+}
+
+/* ---------- report building ---------- */
 function sumRows(rows) {
   const t = { exHst: 0, hst: 0, dc: 0, total: 0, cost: 0, profit: 0 };
   for (const r of rows) {
@@ -402,13 +550,18 @@ function byDateThenRef(a, b) {
   return (a.dateKey - b.dateKey) || (parseInt(a.ref, 10) - parseInt(b.ref, 10));
 }
 
+function inRange(r, f) {
+  if (f.fromKey != null && r.dateKey < f.fromKey) return false;
+  if (f.toKey != null && r.dateKey > f.toKey) return false;
+  return true;
+}
+
 // filters: { fromKey, toKey, search, type, groupBy: 'customer'|'date' }
 function buildReport(invoices, filters) {
   const f = filters || {};
   const q = (f.search || '').trim().toLowerCase();
   const rows = invoices.filter(r => {
-    if (f.fromKey != null && r.dateKey < f.fromKey) return false;
-    if (f.toKey != null && r.dateKey > f.toKey) return false;
+    if (!inRange(r, f)) return false;
     if (f.type && r.type !== f.type) return false;
     if (q && !(r.customer.toLowerCase().includes(q) ||
                r.ref.includes(q) ||
@@ -448,6 +601,91 @@ function buildReport(invoices, filters) {
   return report;
 }
 
+function sumBreakup(rows) {
+  const t = { n: rows.length, amount: 0, cost: 0, hst: 0, profit: 0 };
+  for (const r of rows) { t.amount += r.amount; t.cost += r.cost; t.hst += r.hst; t.profit += r.profit; }
+  return t;
+}
+
+// filters: { fromKey, toKey, search, type, category }
+function buildBreakupReport(lines, filters) {
+  const f = filters || {};
+  const q = (f.search || '').trim().toLowerCase();
+  const rows = lines.filter(r => {
+    if (!inRange(r, f)) return false;
+    if (f.type && r.type !== f.type) return false;
+    if (f.category && r.category !== f.category) return false;
+    if (q && !(r.customer.toLowerCase().includes(q) ||
+               r.ref.includes(q) ||
+               r.license.toLowerCase().includes(q) ||
+               r.code.toLowerCase().includes(q) ||
+               r.desc.toLowerCase().includes(q) ||
+               r.vehicle.toLowerCase().includes(q))) return false;
+    return true;
+  });
+  const map = new Map();
+  for (const r of rows) {
+    if (!map.has(r.category)) map.set(r.category, { name: r.category, rows: [] });
+    map.get(r.category).rows.push(r);
+  }
+  const cats = [...map.values()];
+  for (const c of cats) {
+    c.rows.sort(byDateThenRef);
+    c.totals = sumBreakup(c.rows);
+    c.gp = c.totals.amount ? (c.totals.profit / c.totals.amount) * 100 : 0;
+  }
+  cats.sort((a, b) => b.totals.amount - a.totals.amount);
+  const totals = sumBreakup(rows);
+  return {
+    rows, cats, totals,
+    gp: totals.amount ? (totals.profit / totals.amount) * 100 : 0,
+    refCount: new Set(rows.map(r => r.ref)).size,
+  };
+}
+
+// filters: { fromKey, toKey, search, sort: 'sell'|'qty'|'profit'|'margin'|'code' }
+function buildItemsReport(lines, filters) {
+  const f = filters || {};
+  const q = (f.search || '').trim().toLowerCase();
+  const rows = lines.filter(r => {
+    if (!inRange(r, f)) return false;
+    if (q && !(r.code.toLowerCase().includes(q) ||
+               r.desc.toLowerCase().includes(q) ||
+               r.supplier.toLowerCase().includes(q) ||
+               r.ref.includes(q))) return false;
+    return true;
+  });
+  const map = new Map();
+  for (const r of rows) {
+    let it = map.get(r.code);
+    if (!it) { it = { code: r.code, desc: r.desc, supplier: r.supplier, n: 0, qty: 0, sell: 0, cost: 0 }; map.set(r.code, it); }
+    it.n++; it.qty += r.qty; it.sell += r.sell; it.cost += r.cost;
+    if (!it.desc && r.desc) it.desc = r.desc;
+    if (!it.supplier && r.supplier) it.supplier = r.supplier;
+  }
+  const items = [...map.values()];
+  for (const it of items) {
+    it.profit = it.sell - it.cost;
+    it.margin = it.sell ? (it.profit / it.sell) * 100 : 0;
+  }
+  const sort = f.sort || 'sell';
+  items.sort((a, b) =>
+    sort === 'qty' ? b.qty - a.qty :
+    sort === 'profit' ? b.profit - a.profit :
+    sort === 'margin' ? b.margin - a.margin :
+    sort === 'code' ? (a.code.toLowerCase() < b.code.toLowerCase() ? -1 : 1) :
+    b.sell - a.sell);
+  const totals = { n: rows.length, qty: 0, sell: 0, cost: 0 };
+  for (const r of rows) { totals.qty += r.qty; totals.sell += r.sell; totals.cost += r.cost; }
+  totals.profit = totals.sell - totals.cost;
+  return {
+    rows, items, totals,
+    margin: totals.sell ? (totals.profit / totals.sell) * 100 : 0,
+    itemCount: items.length,
+  };
+}
+
+/* ---------- formatting ---------- */
 // Formats amounts the way the source report does: $-58.71, no thousands separators.
 function fmtMoney(v) {
   let r = Math.round(v * 100) / 100;
@@ -457,6 +695,11 @@ function fmtMoney(v) {
 }
 
 function fmtGp(v) { return (Math.abs(v) < 0.005 ? 0 : v).toFixed(2); }
+
+function fmtQty(v) {
+  const r = Math.round(v * 100) / 100;
+  return String(parseFloat(r.toFixed(2)));
+}
 
 function fmtDateMdy(y, mo, d) {
   const p = n => String(n).padStart(2, '0');
@@ -468,85 +711,165 @@ function daysInMonth(y, mo) { return new Date(y, mo, 0).getDate(); }
 /* ===================== END CORE LOGIC ===================== */
 
 /* =====================================================================
-   Storage
+   Storage — IndexedDB (with legacy localStorage migration)
    ===================================================================== */
-const STORE_KEY = 'tireplusSales.data.v1';
-const FILTER_KEY = 'tireplusSales.filters.v1';
+const DB_NAME = 'tireplus-sales';
+const LEGACY_KEY = 'tireplusSales.data.v1';
+const FILTER_KEY = 'tireplusSales.filters.v2';
+const DATASETS = ['sales', 'breakup', 'items'];
+const DATASET_LABEL = { sales: 'Sales report', breakup: 'Sales breakup', items: 'Item sales' };
 
-let store = { invoices: [], files: [] };   // files: [{name, count, at}]
+// store[name] = { rows: [...], files: [{name, count, at}] }
+let store = { sales: null, breakup: null, items: null };
+let db = null;
 let persistable = true;
 
-function loadStore() {
+function idbOpen() {
+  return new Promise((resolve) => {
+    let req;
+    try { req = indexedDB.open(DB_NAME, 1); }
+    catch (e) { resolve(null); return; }
+    req.onupgradeneeded = () => req.result.createObjectStore('datasets', { keyPath: 'name' });
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => resolve(null);
+  });
+}
+
+function idbGetAll() {
+  return new Promise((resolve) => {
+    if (!db) { resolve([]); return; }
+    try {
+      const req = db.transaction('datasets', 'readonly').objectStore('datasets').getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => resolve([]);
+    } catch (e) { resolve([]); }
+  });
+}
+
+function idbPut(name) {
+  return new Promise((resolve) => {
+    if (!db || !store[name]) { resolve(false); return; }
+    try {
+      const tx = db.transaction('datasets', 'readwrite');
+      tx.objectStore('datasets').put({ name, rows: store[name].rows, files: store[name].files });
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = tx.onabort = () => resolve(false);
+    } catch (e) { resolve(false); }
+  });
+}
+
+function idbClear() {
+  return new Promise((resolve) => {
+    if (!db) { resolve(); return; }
+    try {
+      const tx = db.transaction('datasets', 'readwrite');
+      tx.objectStore('datasets').clear();
+      tx.oncomplete = tx.onerror = tx.onabort = () => resolve();
+    } catch (e) { resolve(); }
+  });
+}
+
+async function loadStore() {
+  db = await idbOpen();
+  persistable = !!db;
+  for (const rec of await idbGetAll()) {
+    if (DATASETS.includes(rec.name) && Array.isArray(rec.rows)) {
+      store[rec.name] = { rows: rec.rows, files: rec.files || [] };
+    }
+  }
+  // Migrate data saved by the previous localStorage-based version.
   try {
-    const raw = localStorage.getItem(STORE_KEY);
+    const raw = localStorage.getItem(LEGACY_KEY);
     if (raw) {
       const s = JSON.parse(raw);
-      if (s && Array.isArray(s.invoices)) store = { invoices: s.invoices, files: s.files || [] };
+      if (s && Array.isArray(s.invoices) && !store.sales) {
+        store.sales = { rows: s.invoices, files: s.files || [] };
+        if (await idbPut('sales')) localStorage.removeItem(LEGACY_KEY);
+      } else {
+        localStorage.removeItem(LEGACY_KEY);
+      }
     }
-  } catch (e) { /* corrupted or unavailable — start fresh */ }
+  } catch (e) { /* ignore */ }
 }
 
-function saveStore() {
-  try {
-    localStorage.setItem(STORE_KEY, JSON.stringify(store));
-    persistable = true;
-  } catch (e) {
+async function saveDataset(name) {
+  const ok = await idbPut(name);
+  if (!ok) {
     persistable = false;
-    toast('Data is loaded for this session, but is too large to remember between visits.');
+    toast('Data is loaded for this session, but could not be saved for next time.');
   }
 }
 
-function mergeInvoices(newRows, fileName) {
-  const byRef = new Map(store.invoices.map(r => [r.ref, r]));
+function idOf(name, r) { return name === 'sales' ? r.ref : r.id; }
+
+function mergeRows(name, newRows, fileName) {
+  if (!store[name]) store[name] = { rows: [], files: [] };
+  const ds = store[name];
+  const byId = new Map(ds.rows.map(r => [idOf(name, r), r]));
   let added = 0, updated = 0;
   for (const r of newRows) {
-    if (byRef.has(r.ref)) updated++; else added++;
-    byRef.set(r.ref, r);
+    const id = idOf(name, r);
+    if (byId.has(id)) updated++; else added++;
+    byId.set(id, r);
   }
-  store.invoices = [...byRef.values()];
-  store.files = store.files.filter(f => f.name !== fileName);
-  store.files.push({ name: fileName, count: newRows.length, at: new Date().toISOString().slice(0, 10) });
-  saveStore();
+  ds.rows = [...byId.values()];
+  ds.files = ds.files.filter(f => f.name !== fileName);
+  ds.files.push({ name: fileName, count: newRows.length, at: new Date().toISOString().slice(0, 10) });
   return { added, updated };
 }
+
+function rowsOf(name) { return store[name] ? store[name].rows : []; }
+function hasAnyData() { return DATASETS.some(n => rowsOf(n).length); }
 
 /* =====================================================================
    Filter state + UI
    ===================================================================== */
 const $ = id => document.getElementById(id);
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const BREAKUP_DETAIL_CAP = 8000;
 
-let state = { period: 'month', y: null, mo: null, from: '', to: '', search: '', type: '', view: 'customer' };
+let state = {
+  tab: 'sales',
+  period: 'month', y: null, mo: null, from: '', to: '',
+  search: '', type: '', view: 'customer',
+  category: '', itemSort: 'sell', totalsOnly: false,
+};
 
 function loadFilters() {
   try {
     const raw = localStorage.getItem(FILTER_KEY);
     if (raw) state = Object.assign(state, JSON.parse(raw));
   } catch (e) { /* ignore */ }
+  if (!DATASETS.includes(state.tab)) state.tab = 'sales';
 }
 function saveFilters() {
   try { localStorage.setItem(FILTER_KEY, JSON.stringify(state)); } catch (e) { /* ignore */ }
 }
 
+function allRows() { return DATASETS.flatMap(n => rowsOf(n)); }
+
 function dataSpan() {
-  if (!store.invoices.length) return null;
-  let min = store.invoices[0], max = store.invoices[0];
-  for (const r of store.invoices) {
-    if (r.dateKey < min.dateKey) min = r;
-    if (r.dateKey > max.dateKey) max = r;
+  let min = null, max = null;
+  for (const r of allRows()) {
+    if (!min || r.dateKey < min.dateKey) min = r;
+    if (!max || r.dateKey > max.dateKey) max = r;
   }
-  return { min, max };
+  return min ? { min, max } : null;
 }
 
 function ensureValidState() {
   const span = dataSpan();
   if (!span) return;
-  const years = [...new Set(store.invoices.map(r => r.y))].sort();
+  const years = [...new Set(allRows().map(r => r.y))].sort();
   if (state.y == null || !years.includes(state.y)) { state.y = span.max.y; state.mo = span.max.mo; }
   if (state.mo == null || state.mo < 1 || state.mo > 12) state.mo = span.max.mo;
   const iso = r => `${r.y}-${String(r.mo).padStart(2,'0')}-${String(r.d).padStart(2,'0')}`;
   if (!state.from) state.from = iso(span.min);
   if (!state.to) state.to = iso(span.max);
+  if (rowsOf(state.tab).length === 0) {
+    const first = DATASETS.find(n => rowsOf(n).length);
+    if (first) state.tab = first;
+  }
 }
 
 // Effective inclusive date range for the current period selection.
@@ -577,15 +900,19 @@ function rangeLabel() {
   return fmtDateMdy(r.from.y, r.from.mo, r.from.d) + ' – ' + fmtDateMdy(r.to.y, r.to.mo, r.to.d);
 }
 
-function currentReport() {
+const TAB_TITLE = { sales: 'Sales Report', breakup: 'Sales Breakup Report', items: 'Item Sales Report' };
+
+function currentFilters() {
   const r = effectiveRange();
-  return buildReport(store.invoices, {
+  return {
     fromKey: dateKeyOf(r.from.y, r.from.mo, r.from.d),
     toKey: dateKeyOf(r.to.y, r.to.mo, r.to.d),
     search: state.search,
     type: state.type,
     groupBy: state.view,
-  });
+    category: state.category,
+    sort: state.itemSort,
+  };
 }
 
 /* ---------- rendering ---------- */
@@ -595,6 +922,26 @@ function moneyTd(v, cls) {
   return `<td class="num${v < -0.004 ? ' neg' : ''}${cls ? ' ' + cls : ''}">${fmtMoney(v)}</td>`;
 }
 
+function reportShell(bodyHtml, sub) {
+  const r = effectiveRange();
+  const fromStr = fmtDateMdy(r.from.y, r.from.mo, r.from.d);
+  const toStr = fmtDateMdy(r.to.y, r.to.mo, r.to.d);
+  const today = new Date();
+  const printedStr = fmtDateMdy(today.getFullYear(), today.getMonth() + 1, today.getDate());
+  const extras = [];
+  if (state.type && state.tab !== 'items') extras.push(esc(state.type) + 's only');
+  if (state.tab === 'breakup' && state.category) extras.push(esc(state.category));
+  if (state.search) extras.push('matching “' + esc(state.search) + '”');
+  return {
+    html: `
+      <h1 class="rpt-title">${TAB_TITLE[state.tab]}</h1>
+      <p class="rpt-range">From: ${fromStr} &nbsp;To: ${toStr}${extras.length ? ' &nbsp;·&nbsp; ' + extras.join(' &nbsp;·&nbsp; ') : ''}</p>
+      ${bodyHtml}
+      <div class="rpt-footer"><span>${sub}</span><span>Date Printed: ${printedStr}</span></div>`,
+  };
+}
+
+/* ----- Sales tab ----- */
 function invoiceTr(r) {
   return `<tr class="inv">
     <td>${esc(r.ref)}</td>
@@ -608,24 +955,187 @@ function invoiceTr(r) {
   </tr>`;
 }
 
-function totalsCells(t, gp) {
+function salesTotalsCells(t, gp) {
   return `${moneyTd(t.exHst)}${moneyTd(t.hst)}${moneyTd(t.dc)}${moneyTd(t.total)}${moneyTd(t.cost)}${moneyTd(t.profit)}<td class="num">${fmtGp(gp)}</td>`;
 }
 
-function renderReport() {
-  const sheet = $('sheet');
+function renderSalesTab() {
+  const rep = buildReport(rowsOf('sales'), currentFilters());
+  const head = `<thead><tr>
+      <th style="width:6%">Ref</th><th style="width:8%">Date</th><th style="width:6%">Type</th>
+      <th style="width:17%">Customer</th><th style="width:8%">Service Advisor</th><th style="width:8%">License</th>
+      <th class="num" style="width:8%">Ex HST</th><th class="num" style="width:6.5%">HST</th><th class="num" style="width:6.5%">D/C</th>
+      <th class="num" style="width:8%">Total</th><th class="num" style="width:8%">Cost Ex. HST</th><th class="num" style="width:8%">Profit</th>
+      <th class="num" style="width:5%">GP%</th>
+    </tr></thead>`;
+  let body = '';
+  if (rep.groups) {
+    for (const g of rep.groups) {
+      body += `<tbody class="grp">
+        <tr class="cust-name"><td colspan="13">${esc(g.name)}</td></tr>
+        ${g.rows.map(invoiceTr).join('')}
+        <tr class="subtotal"><td colspan="6" class="lbl">${esc(g.name)} Total:</td>${salesTotalsCells(g.totals, g.gp)}</tr>
+      </tbody>`;
+    }
+  } else {
+    body = `<tbody class="grp${rep.rows.length > 40 ? ' big' : ''}">${rep.rows.map(invoiceTr).join('')}</tbody>`;
+  }
+  const grand = rep.rows.length
+    ? `<tbody><tr class="grand"><td colspan="6" class="lbl">Grand Total:</td>${salesTotalsCells(rep.totals, rep.gp)}</tr></tbody>`
+    : '';
+  const table = rep.rows.length
+    ? `<table class="rpt-table">${head}${body}${grand}</table>`
+    : `<div class="rpt-empty">${rowsOf('sales').length ? 'No transactions match the current filters for this period.' : 'No Sales Report data imported yet — drop the Sales Report CSV export here.'}</div>`;
+  $('sheet').innerHTML = reportShell(table,
+    `${rep.rows.length} transaction${rep.rows.length === 1 ? '' : 's'} · ${rep.customerCount} customer${rep.customerCount === 1 ? '' : 's'}`).html;
 
-  if (!store.invoices.length) {
-    sheet.innerHTML = `
+  const t = rep.totals;
+  renderCards([
+    { k: 'Transactions', v: String(rep.rows.length), s: `${rep.invoiceCount} invoices · ${rep.creditCount} credits` },
+    { k: 'Customers', v: String(rep.customerCount), s: 'unique in period' },
+    { k: 'Sales (Ex HST)', v: locMoney(t.exHst), s: 'D/C ' + locMoney(t.dc) },
+    { k: 'Total (Inc HST)', v: locMoney(t.total), s: 'HST ' + locMoney(t.hst) },
+    { k: 'Profit', v: locMoney(t.profit), s: 'Cost ' + locMoney(t.cost), neg: t.profit < 0 },
+    { k: 'GP %', v: fmtGp(rep.gp) + '%', s: 'profit ÷ (Ex HST − D/C)', neg: rep.gp < 0 },
+  ]);
+}
+
+/* ----- Categories (Sales Breakup) tab ----- */
+function breakupTr(r) {
+  return `<tr class="inv">
+    <td>${esc(r.ref)}</td>
+    <td>${fmtDateMdy(r.y, r.mo, r.d)}</td>
+    <td>${esc(r.type)}</td>
+    <td>${esc(r.customer)}</td>
+    <td>${esc(r.license)}</td>
+    <td>${esc(r.vehicle)}</td>
+    <td>${esc(r.code)}</td>
+    <td style="white-space:normal">${esc(r.desc)}</td>
+    ${moneyTd(r.amount)}${moneyTd(r.cost)}${moneyTd(r.hst)}${moneyTd(r.profit)}
+  </tr>`;
+}
+
+function breakupTotalsCells(t, gp) {
+  return `${moneyTd(t.amount)}${moneyTd(t.cost)}${moneyTd(t.hst)}${moneyTd(t.profit)}<td class="num">${fmtGp(gp)}</td>`;
+}
+
+function renderBreakupTab() {
+  const rep = buildBreakupReport(rowsOf('breakup'), currentFilters());
+  const totalsOnly = state.totalsOnly || rep.rows.length > BREAKUP_DETAIL_CAP;
+  const forced = !state.totalsOnly && rep.rows.length > BREAKUP_DETAIL_CAP;
+  let table;
+  if (!rep.rows.length) {
+    table = `<div class="rpt-empty">${rowsOf('breakup').length ? 'No line items match the current filters for this period.' : 'No Sales Breakup data imported yet — drop the Sales Breakup Report CSV export here.'}</div>`;
+  } else if (totalsOnly) {
+    const head = `<thead><tr>
+        <th>Category</th><th class="num">Line items</th>
+        <th class="num">Amount</th><th class="num">Cost Ex.</th><th class="num">HST</th><th class="num">Profit</th><th class="num">GP%</th>
+      </tr></thead>`;
+    const body = rep.cats.map(c => `<tr class="inv">
+        <td>${esc(c.name)}</td><td class="num">${c.totals.n}</td>
+        ${moneyTd(c.totals.amount)}${moneyTd(c.totals.cost)}${moneyTd(c.totals.hst)}${moneyTd(c.totals.profit)}
+        <td class="num${c.gp < -0.004 ? ' neg' : ''}">${fmtGp(c.gp)}</td>
+      </tr>`).join('');
+    const grand = `<tr class="grand"><td class="lbl">Grand Total:</td><td class="num">${rep.totals.n}</td>${breakupTotalsCells(rep.totals, rep.gp)}</tr>`;
+    table = (forced ? `<p class="rpt-note">Showing category totals only — ${rep.totals.n.toLocaleString('en-CA')} line items is too many to list. Narrow the period to see line-item detail.</p>` : '') +
+      `<table class="rpt-table" style="min-width:640px">${head}<tbody class="grp">${body}${grand}</tbody></table>`;
+  } else {
+    const head = `<thead><tr>
+        <th style="width:5.5%">Ref</th><th style="width:8%">Date</th><th style="width:6%">Type</th>
+        <th style="width:12%">Customer</th><th style="width:7%">License</th><th style="width:9%">Make/Model</th>
+        <th style="width:9%">Item Code</th><th>Description</th>
+        <th class="num" style="width:7.5%">Amount</th><th class="num" style="width:7.5%">Cost Ex.</th>
+        <th class="num" style="width:7%">HST</th><th class="num" style="width:7.5%">Profit</th>
+      </tr></thead>`;
+    let body = '';
+    for (const c of rep.cats) {
+      body += `<tbody class="grp${c.rows.length > 40 ? ' big' : ''}">
+        <tr class="cust-name"><td colspan="12">${esc(c.name)}</td></tr>
+        ${c.rows.map(breakupTr).join('')}
+        <tr class="subtotal"><td colspan="8" class="lbl">${esc(c.name)} Total:</td>${moneyTd(c.totals.amount)}${moneyTd(c.totals.cost)}${moneyTd(c.totals.hst)}${moneyTd(c.totals.profit)}</tr>
+      </tbody>`;
+    }
+    const grand = `<tbody><tr class="grand"><td colspan="8" class="lbl">Grand Total:</td>${moneyTd(rep.totals.amount)}${moneyTd(rep.totals.cost)}${moneyTd(rep.totals.hst)}${moneyTd(rep.totals.profit)}</tr></tbody>`;
+    table = `<table class="rpt-table">${head}${body}${grand}</table>`;
+  }
+  $('sheet').innerHTML = reportShell(table,
+    `${rep.totals.n.toLocaleString('en-CA')} line item${rep.totals.n === 1 ? '' : 's'} · ${rep.refCount.toLocaleString('en-CA')} invoices · ${rep.cats.length} categor${rep.cats.length === 1 ? 'y' : 'ies'}`).html;
+
+  const t = rep.totals;
+  const top = rep.cats[0];
+  renderCards([
+    { k: 'Line items', v: t.n.toLocaleString('en-CA'), s: `${rep.refCount.toLocaleString('en-CA')} invoices` },
+    { k: 'Top category', v: top ? esc(top.name) : '—', s: top ? locMoney(top.totals.amount) : '' },
+    { k: 'Amount (Ex HST)', v: locMoney(t.amount), s: 'HST ' + locMoney(t.hst) },
+    { k: 'Cost', v: locMoney(t.cost), s: 'of amount' },
+    { k: 'Profit', v: locMoney(t.profit), s: 'amount − cost', neg: t.profit < 0 },
+    { k: 'GP %', v: fmtGp(rep.gp) + '%', s: 'profit ÷ amount', neg: rep.gp < 0 },
+  ]);
+}
+
+/* ----- Items tab ----- */
+function renderItemsTab() {
+  const rep = buildItemsReport(rowsOf('items'), currentFilters());
+  let table;
+  if (!rep.rows.length) {
+    table = `<div class="rpt-empty">${rowsOf('items').length ? 'No item sales match the current filters for this period.' : 'No Item Sales data imported yet — drop the Item Sales Report CSV export here.'}</div>`;
+  } else {
+    const head = `<thead><tr>
+        <th style="width:11%">Item Code</th><th>Description</th><th style="width:13%">Supplier</th>
+        <th class="num" style="width:6%">Sales</th><th class="num" style="width:7%">Qty</th>
+        <th class="num" style="width:9%">Revenue</th><th class="num" style="width:9%">Cost</th>
+        <th class="num" style="width:9%">Profit</th><th class="num" style="width:7%">Margin%</th>
+      </tr></thead>`;
+    const body = rep.items.map(it => `<tr class="inv">
+        <td>${esc(it.code)}</td>
+        <td style="white-space:normal">${esc(it.desc)}</td>
+        <td style="white-space:normal">${esc(it.supplier)}</td>
+        <td class="num">${it.n}</td>
+        <td class="num${it.qty < 0 ? ' neg' : ''}">${fmtQty(it.qty)}</td>
+        ${moneyTd(it.sell)}${moneyTd(it.cost)}${moneyTd(it.profit)}
+        <td class="num${it.margin < -0.004 ? ' neg' : ''}">${fmtGp(it.margin)}</td>
+      </tr>`).join('');
+    const t = rep.totals;
+    const grand = `<tr class="grand"><td colspan="3" class="lbl">Grand Total:</td><td class="num">${t.n}</td><td class="num">${fmtQty(t.qty)}</td>${moneyTd(t.sell)}${moneyTd(t.cost)}${moneyTd(t.profit)}<td class="num">${fmtGp(rep.margin)}</td></tr>`;
+    table = `<table class="rpt-table">${head}<tbody class="grp${rep.items.length > 40 ? ' big' : ''}">${body}${grand}</tbody></table>`;
+  }
+  $('sheet').innerHTML = reportShell(table,
+    `${rep.itemCount.toLocaleString('en-CA')} items · ${rep.totals.n.toLocaleString('en-CA')} sale lines`).html;
+
+  const t = rep.totals;
+  renderCards([
+    { k: 'Items', v: rep.itemCount.toLocaleString('en-CA'), s: 'distinct item codes' },
+    { k: 'Units sold', v: (Math.round(t.qty * 100) / 100).toLocaleString('en-CA'), s: `${t.n.toLocaleString('en-CA')} sale lines` },
+    { k: 'Revenue', v: locMoney(t.sell), s: 'sell price (Ex HST)' },
+    { k: 'Cost', v: locMoney(t.cost), s: 'of revenue' },
+    { k: 'Profit', v: locMoney(t.profit), s: 'revenue − cost', neg: t.profit < 0 },
+    { k: 'Margin %', v: fmtGp(rep.margin) + '%', s: 'profit ÷ revenue', neg: rep.margin < 0 },
+  ]);
+}
+
+function renderCards(cards) {
+  $('summary').innerHTML = cards.map(c =>
+    `<div class="card"><div class="k">${c.k}</div><div class="v${c.neg ? ' neg' : ''}">${c.v}</div><div class="s">${c.s}</div></div>`).join('');
+}
+
+function locMoney(v) {
+  const r = Math.round(v * 100) / 100;
+  return (r < 0 ? '-$' : '$') + Math.abs(r).toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function renderReport() {
+  if (!hasAnyData()) {
+    $('sheet').innerHTML = `
       <div class="empty">
         <h2>No sales data loaded yet</h2>
-        <p>Import the CSV export of your point-of-sale <strong>Sales Report</strong> to get started.</p>
-        <p>Everything stays in this browser — nothing is uploaded anywhere.</p>
+        <p>Import the CSV exports of your point-of-sale reports to get started:</p>
+        <p><strong>Sales Report</strong> · <strong>Sales Breakup Report</strong> · <strong>Item Sales Report</strong></p>
+        <p>The file type is detected automatically. Everything stays in this browser — nothing is uploaded anywhere.</p>
         <div class="bigdrop">
-          <strong>Drag &amp; drop your CSV file here</strong>
+          <strong>Drag &amp; drop your CSV file(s) here</strong>
           <p>or</p>
           <div class="actions">
-            <button class="btn primary" id="btnImport2">Choose CSV file…</button>
+            <button class="btn primary" id="btnImport2">Choose CSV files…</button>
           </div>
           <p style="margin-top:14px"><button class="linklike" id="btnDemo">…or try it with built-in demo data</button></p>
         </div>
@@ -636,86 +1146,39 @@ function renderReport() {
     $('datastrip').innerHTML = '';
     return;
   }
-
-  const rep = currentReport();
-  const r = effectiveRange();
-  const fromStr = fmtDateMdy(r.from.y, r.from.mo, r.from.d);
-  const toStr = fmtDateMdy(r.to.y, r.to.mo, r.to.d);
-  const today = new Date();
-  const printedStr = fmtDateMdy(today.getFullYear(), today.getMonth() + 1, today.getDate());
-
-  const head = `<thead><tr>
-      <th style="width:6%">Ref</th><th style="width:8%">Date</th><th style="width:6%">Type</th>
-      <th style="width:17%">Customer</th><th style="width:8%">Service Advisor</th><th style="width:8%">License</th>
-      <th class="num" style="width:8%">Ex HST</th><th class="num" style="width:6.5%">HST</th><th class="num" style="width:6.5%">D/C</th>
-      <th class="num" style="width:8%">Total</th><th class="num" style="width:8%">Cost Ex. HST</th><th class="num" style="width:8%">Profit</th>
-      <th class="num" style="width:5%">GP%</th>
-    </tr></thead>`;
-
-  let body = '';
-  if (rep.groups) {
-    for (const g of rep.groups) {
-      body += `<tbody class="grp">
-        <tr class="cust-name"><td colspan="13">${esc(g.name)}</td></tr>
-        ${g.rows.map(invoiceTr).join('')}
-        <tr class="subtotal"><td colspan="6" class="lbl">${esc(g.name)} Total:</td>${totalsCells(g.totals, g.gp)}</tr>
-      </tbody>`;
-    }
-  } else {
-    body = `<tbody class="grp">${rep.rows.map(invoiceTr).join('')}</tbody>`;
-  }
-  const grand = rep.rows.length
-    ? `<tbody><tr class="grand"><td colspan="6" class="lbl">Grand Total:</td>${totalsCells(rep.totals, rep.gp)}</tr></tbody>`
-    : '';
-
-  sheet.innerHTML = `
-    <h1 class="rpt-title">Sales Report</h1>
-    <p class="rpt-range">From: ${fromStr} &nbsp;To: ${toStr}${state.type ? ' &nbsp;·&nbsp; ' + esc(state.type) + 's only' : ''}${state.search ? ' &nbsp;·&nbsp; matching “' + esc(state.search) + '”' : ''}</p>
-    ${rep.rows.length
-      ? `<table class="rpt-table">${head}${body}${grand}</table>`
-      : `<div class="rpt-empty">No transactions match the current filters for this period.</div>`}
-    <div class="rpt-footer"><span>${rep.rows.length} transaction${rep.rows.length === 1 ? '' : 's'} · ${rep.customerCount} customer${rep.customerCount === 1 ? '' : 's'}</span><span>Date Printed: ${printedStr}</span></div>`;
-
-  renderSummary(rep);
+  if (state.tab === 'breakup') renderBreakupTab();
+  else if (state.tab === 'items') renderItemsTab();
+  else renderSalesTab();
   renderDatastrip();
-}
-
-function renderSummary(rep) {
-  const t = rep.totals;
-  const cards = [
-    { k: 'Transactions', v: String(rep.rows.length), s: `${rep.invoiceCount} invoices · ${rep.creditCount} credits` },
-    { k: 'Customers', v: String(rep.customerCount), s: 'unique in period' },
-    { k: 'Sales (Ex HST)', v: locMoney(t.exHst), s: 'D/C ' + locMoney(t.dc) },
-    { k: 'Total (Inc HST)', v: locMoney(t.total), s: 'HST ' + locMoney(t.hst) },
-    { k: 'Profit', v: locMoney(t.profit), s: 'Cost ' + locMoney(t.cost), neg: t.profit < 0 },
-    { k: 'GP %', v: fmtGp(rep.gp) + '%', s: 'profit ÷ (Ex HST − D/C)', neg: rep.gp < 0 },
-  ];
-  $('summary').innerHTML = cards.map(c =>
-    `<div class="card"><div class="k">${c.k}</div><div class="v${c.neg ? ' neg' : ''}">${c.v}</div><div class="s">${c.s}</div></div>`).join('');
-}
-
-function locMoney(v) {
-  const r = Math.round(v * 100) / 100;
-  return (r < 0 ? '-$' : '$') + Math.abs(r).toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function renderDatastrip() {
   const span = dataSpan();
-  const files = store.files.map(f => esc(f.name)).join(', ');
-  $('datastrip').innerHTML = span
-    ? `<span><span class="dot"></span>${store.invoices.length} transactions on file · ${fmtDateMdy(span.min.y, span.min.mo, span.min.d)} → ${fmtDateMdy(span.max.y, span.max.mo, span.max.d)}</span>
-       <span>Source: ${files}</span>${persistable ? '' : '<span style="color:var(--bad)">⚠ not persisted (too large for browser storage)</span>'}`
-    : '';
+  if (!span) { $('datastrip').innerHTML = ''; return; }
+  const parts = DATASETS
+    .filter(n => rowsOf(n).length)
+    .map(n => `${DATASET_LABEL[n]}: ${rowsOf(n).length.toLocaleString('en-CA')}`);
+  const files = [...new Set(DATASETS.flatMap(n => (store[n] ? store[n].files : [])).map(f => f.name))];
+  $('datastrip').innerHTML =
+    `<span><span class="dot"></span>${parts.join(' · ')} &nbsp;·&nbsp; ${fmtDateMdy(span.min.y, span.min.mo, span.min.d)} → ${fmtDateMdy(span.max.y, span.max.mo, span.max.d)}</span>
+     <span title="${esc(files.join(', '))}">Sources: ${files.length} file${files.length === 1 ? '' : 's'}</span>
+     ${persistable ? '' : '<span style="color:var(--bad)">⚠ not persisted in this browser</span>'}`;
 }
 
 /* ---------- controls ---------- */
 function renderControls() {
-  const has = store.invoices.length > 0;
+  const has = hasAnyData();
   $('controls').style.display = has ? '' : 'none';
+  $('tabsbar').style.display = has ? '' : 'none';
   $('btnExport').disabled = !has;
   $('btnClear').disabled = !has;
   $('btnPrint').disabled = !has;
   if (!has) return;
+
+  document.querySelectorAll('#tabsbar button').forEach(b => b.classList.toggle('on', b.dataset.t === state.tab));
+  $('cntSales').textContent = rowsOf('sales').length ? rowsOf('sales').length.toLocaleString('en-CA') : '';
+  $('cntBreakup').textContent = rowsOf('breakup').length ? rowsOf('breakup').length.toLocaleString('en-CA') : '';
+  $('cntItems').textContent = rowsOf('items').length ? rowsOf('items').length.toLocaleString('en-CA') : '';
 
   document.querySelectorAll('#segPeriod button').forEach(b => b.classList.toggle('on', b.dataset.p === state.period));
   document.querySelectorAll('#segView button').forEach(b => b.classList.toggle('on', b.dataset.v === state.view));
@@ -723,17 +1186,35 @@ function renderControls() {
   $('fYearOnly').style.display = state.period === 'year' ? '' : 'none';
   $('fFrom').style.display = $('fTo').style.display = state.period === 'range' ? '' : 'none';
 
-  const years = [...new Set(store.invoices.map(r => r.y))].sort();
-  const monthsWithData = new Set(store.invoices.filter(r => r.y === state.y).map(r => r.mo));
+  $('fType').style.display = state.tab === 'items' ? 'none' : '';
+  $('fView').style.display = state.tab === 'sales' ? '' : 'none';
+  $('fCategory').style.display = state.tab === 'breakup' ? '' : 'none';
+  $('fTotalsOnly').style.display = state.tab === 'breakup' ? '' : 'none';
+  $('fSort').style.display = state.tab === 'items' ? '' : 'none';
+
+  const rows = allRows();
+  const years = [...new Set(rows.map(r => r.y))].sort();
+  const monthsWithData = new Set(rows.filter(r => r.y === state.y).map(r => r.mo));
   $('selMonth').innerHTML = MONTH_NAMES.map((n, i) =>
     `<option value="${i + 1}"${i + 1 === state.mo ? ' selected' : ''}>${n}${monthsWithData.has(i + 1) ? '' : ' —'}</option>`).join('');
   const yearOpts = years.map(y => `<option value="${y}"${y === state.y ? ' selected' : ''}>${y}</option>`).join('');
   $('selYear').innerHTML = yearOpts;
   $('selYear2').innerHTML = yearOpts;
 
-  const types = [...new Set(store.invoices.map(r => r.type))].sort();
+  const types = [...new Set([...rowsOf('sales'), ...rowsOf('breakup')].map(r => r.type))].sort();
   $('selType').innerHTML = `<option value="">All types</option>` +
     types.map(t => `<option value="${esc(t)}"${t === state.type ? ' selected' : ''}>${esc(t)}s only</option>`).join('');
+
+  const cats = [...new Set(rowsOf('breakup').map(r => r.category))].sort();
+  $('selCategory').innerHTML = `<option value="">All categories</option>` +
+    cats.map(c => `<option value="${esc(c)}"${c === state.category ? ' selected' : ''}>${esc(c)}</option>`).join('');
+  $('selSort').value = state.itemSort;
+  $('chkTotalsOnly').checked = state.totalsOnly;
+
+  $('inpSearch').placeholder =
+    state.tab === 'items' ? 'Item code, description, supplier…' :
+    state.tab === 'breakup' ? 'Customer, item, license, vehicle…' :
+    'Customer, ref # or license…';
   if (document.activeElement !== $('inpSearch')) $('inpSearch').value = state.search;
   $('dateFrom').value = state.from;
   $('dateTo').value = state.to;
@@ -757,27 +1238,32 @@ function shiftMonth(delta) {
 /* ---------- import / export ---------- */
 function importFiles(fileList) {
   const files = [...fileList].filter(f => /\.csv$/i.test(f.name) || f.type === 'text/csv' || f.type === 'application/vnd.ms-excel');
-  if (!files.length) { toast('Please choose a .csv file (the Sales Report export).'); return; }
-  let done = 0, imported = 0, added = 0, updated = 0, failed = [];
+  if (!files.length) { toast('Please choose a .csv file (a report export).'); return; }
+  let done = 0;
+  const results = [], failed = [], touched = new Set();
   for (const f of files) {
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       try {
-        const invs = extractInvoices(parseCsv(String(reader.result)));
-        if (!invs.length) { failed.push(f.name); }
+        const rows = parseCsv(String(reader.result));
+        const fmt = detectFormat(rows);
+        const parsed = fmt === 'breakup' ? extractBreakup(rows) : fmt === 'items' ? extractItems(rows) : extractInvoices(rows);
+        if (!parsed.length) failed.push(f.name);
         else {
-          const res = mergeInvoices(invs, f.name);
-          imported += invs.length; added += res.added; updated += res.updated;
+          const res = mergeRows(fmt, parsed, f.name);
+          touched.add(fmt);
+          results.push(`${DATASET_LABEL[fmt]}: ${parsed.length.toLocaleString('en-CA')} rows (${res.added.toLocaleString('en-CA')} new)`);
         }
       } catch (e) { failed.push(f.name); }
       if (++done === files.length) {
-        if (imported) {
-          // Jump to the most recent month in the newly loaded data.
+        for (const name of touched) await saveDataset(name);
+        if (results.length) {
           const span = dataSpan();
           if (span && state.period === 'month') { state.y = span.max.y; state.mo = span.max.mo; }
-          toast(`Imported ${imported} transactions (${added} new, ${updated} updated).` + (failed.length ? ` Could not read: ${failed.join(', ')}` : ''));
+          if (touched.size === 1 && !rowsOf(state.tab).length) state.tab = [...touched][0];
+          toast('Imported — ' + results.join(' · ') + (failed.length ? `. Could not read: ${failed.join(', ')}` : ''));
         } else {
-          toast(`No sales rows found in ${failed.join(', ') || 'the selected file(s)'} — is it the Sales Report CSV export?`);
+          toast(`No report rows found in ${failed.join(', ') || 'the selected file(s)'} — expected a Sales, Sales Breakup or Item Sales CSV export.`);
         }
         rerender();
       }
@@ -788,27 +1274,48 @@ function importFiles(fileList) {
 }
 
 function exportFiltered() {
-  const rep = currentReport();
-  const rows = rep.groups ? rep.groups.flatMap(g => g.rows) : rep.rows;
   const q = s => '"' + String(s).replace(/"/g, '""') + '"';
-  const lines = [['Ref', 'Date', 'Type', 'Customer', 'Service Advisor', 'License', 'Ex HST', 'HST', 'D/C', 'Total', 'Cost Ex. HST', 'Profit', 'GP%'].join(',')];
-  for (const r of rows) {
-    lines.push([r.ref, fmtDateMdy(r.y, r.mo, r.d), q(r.type), q(r.customer), q(r.advisor), q(r.license),
-      r.exHst.toFixed(2), r.hst.toFixed(2), r.dc.toFixed(2), r.total.toFixed(2), r.cost.toFixed(2), r.profit.toFixed(2),
-      fmtGp(gpPercent(r.exHst, r.dc, r.profit))].join(','));
+  let lines, nameHint;
+  if (state.tab === 'breakup') {
+    const rep = buildBreakupReport(rowsOf('breakup'), currentFilters());
+    lines = [['Category', 'Ref', 'Date', 'Type', 'Customer', 'License', 'Make/Model', 'Item Code', 'Description', 'Amount', 'Cost Ex.', 'HST', 'Profit'].join(',')];
+    for (const c of rep.cats) for (const r of c.rows) {
+      lines.push([q(c.name), r.ref, fmtDateMdy(r.y, r.mo, r.d), q(r.type), q(r.customer), q(r.license), q(r.vehicle), q(r.code), q(r.desc),
+        r.amount.toFixed(2), r.cost.toFixed(2), r.hst.toFixed(2), r.profit.toFixed(2)].join(','));
+    }
+    nameHint = 'sales-breakup-';
+  } else if (state.tab === 'items') {
+    const rep = buildItemsReport(rowsOf('items'), currentFilters());
+    lines = [['Item Code', 'Description', 'Supplier', 'Sales', 'Qty', 'Revenue', 'Cost', 'Profit', 'Margin%'].join(',')];
+    for (const it of rep.items) {
+      lines.push([q(it.code), q(it.desc), q(it.supplier), it.n, fmtQty(it.qty),
+        it.sell.toFixed(2), it.cost.toFixed(2), it.profit.toFixed(2), fmtGp(it.margin)].join(','));
+    }
+    nameHint = 'item-sales-';
+  } else {
+    const rep = buildReport(rowsOf('sales'), currentFilters());
+    const rows = rep.groups ? rep.groups.flatMap(g => g.rows) : rep.rows;
+    lines = [['Ref', 'Date', 'Type', 'Customer', 'Service Advisor', 'License', 'Ex HST', 'HST', 'D/C', 'Total', 'Cost Ex. HST', 'Profit', 'GP%'].join(',')];
+    for (const r of rows) {
+      lines.push([r.ref, fmtDateMdy(r.y, r.mo, r.d), q(r.type), q(r.customer), q(r.advisor), q(r.license),
+        r.exHst.toFixed(2), r.hst.toFixed(2), r.dc.toFixed(2), r.total.toFixed(2), r.cost.toFixed(2), r.profit.toFixed(2),
+        fmtGp(gpPercent(r.exHst, r.dc, r.profit))].join(','));
+    }
+    nameHint = 'sales-report-';
   }
   const blob = new Blob([lines.join('\r\n')], { type: 'text/csv' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = ('sales-report-' + rangeLabel().toLowerCase().replace(/[^a-z0-9]+/g, '-') + '.csv').replace(/-+/g, '-');
+  a.download = (nameHint + rangeLabel().toLowerCase().replace(/[^a-z0-9]+/g, '-') + '.csv').replace(/-+/g, '-');
   a.click();
   URL.revokeObjectURL(a.href);
 }
 
-function clearData() {
+async function clearData() {
   if (!confirm('Remove all imported sales data from this browser? Your original CSV files are not affected.')) return;
-  store = { invoices: [], files: [] };
-  try { localStorage.removeItem(STORE_KEY); } catch (e) { /* ignore */ }
+  store = { sales: null, breakup: null, items: null };
+  await idbClear();
+  try { localStorage.removeItem(LEGACY_KEY); } catch (e) { /* ignore */ }
   rerender();
 }
 
@@ -818,7 +1325,7 @@ function toast(msg) {
   el.textContent = msg;
   el.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('show'), 4200);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 5000);
 }
 
 /* ---------- demo data (fictional) ---------- */
@@ -842,31 +1349,69 @@ Demo Customer C,,,,,,,,,,,,,,,,
 90009,,,,02/21/2025,Invoice,Demo Customer C,,DEMO933,,$530.95,$69.02,$0.00,$599.97,$275.52,$255.43,48.11
 Page ,1,of ,1,,,,,,Date Printed: 03/01/2025,,,,,,,`;
 
-function loadDemo() {
-  const invs = extractInvoices(parseCsv(DEMO_CSV));
-  mergeInvoices(invs, 'Demo data (built-in)');
+const DEMO_BREAKUP = `,,,,,,,,,,,Sales Breakup Report,,,,,
+,,,,,,,,,,,From: 01/01/2025 To: 02/28/2025,,,,,
+Ref,,,,Date,Item Code,Description,Type,Customer,,License Plate,Make/Model,Amount,Cost Ex.,,HST,Profit
+LABOUR,,,,,,,,,,,,,,,,
+90001,,,,01/04/2025,LABOUR,Brake Pads R&R,Invoice,Demo Customer A,,DEMO001,HONDA CIVIC,$236.00,,$118.00,$30.68,$118.00
+90003,,,,01/15/2025,LABOUR,Alternator R&R,Invoice,Demo Customer B,,DEMO212,FORD F150,$295.00,,$147.50,$38.35,$147.50
+90007,,,,02/11/2025,PATCHLABOUR,Flat Repair,Invoice,Demo Customer A,,DEMO001,HONDA CIVIC,$40.00,,$20.00,$5.20,$20.00
+,,,,,,LABOUR Total:,,,,,,$571.00,,$285.50,$74.23,$285.50
+TIRES,,,,,,,,,,,,,,,,
+90002,,,,01/07/2025,TIRE_NOR,All-Season Tire 225/65R17,Invoice,"Demo Fleet, Inc.",,FLEET12,FORD TRANSIT,$824.00,,$616.00,$107.12,$208.00
+,,,,,,TIRES Total:,,,,,,$824.00,,$616.00,$107.12,$208.00
+CONSUMABLES,,,,,,,,,,,,,,,,
+90001,,,,01/04/2025,MISCSUPPLIES,Shop Supplies,Invoice,Demo Customer A,,DEMO001,HONDA CIVIC,$6.95,,$0.00,$0.90,$6.95
+90009,,,,02/21/2025,MISCSUPPLIES,Shop Supplies,Invoice,Demo Customer C,,DEMO933,TOYOTA COROLLA,$6.95,,$0.00,$0.90,$6.95
+,,,,,,CONSUMABLES Total:,,,,,,$13.90,,$0.00,$1.80,$13.90
+Page ,1,of ,1,,,,,,Date Printed: 03/01/2025,,,,,,,`;
+
+const DEMO_ITEMS = `,,,,,,,,,Item Sales Report,,,,,
+,,,,,,,,,From: 01/01/2025 To: 02/28/2025,,,,,
+Date,,Invoice Ref,,Item Code,Service Advisor,Description,Supplier,QOH,Qty Sold,Sell Price,,Unit Cost,,Cost
+,,,,,,,,,,,,,,
+01/07/25,,90002,,DEMO-TIRE1,,All-Season Tire 225/65R17,Demo Tire Supply,4.00,4.00,$824.00,,$154.00,,$616.00
+,,,,,,,,,4.00,,$824.00,,$154.00,$616.00
+,,,,,,,,,,,,,,
+01/04/25,,90001,,DEMO-PADS,,Ceramic Brake Pads Front,Demo Parts Co,2.00,1.00,$89.99,,$41.50,,$41.50
+02/11/25,,90007,,DEMO-PADS,,Ceramic Brake Pads Front,Demo Parts Co,1.00,1.00,$89.99,,$41.50,,$41.50
+,,,,,,,,,2.00,,$179.98,,$41.50,$83.00
+,,,,,,,,,,,,,,
+01/15/25,,90003,,DEMO-ALT,,Remanufactured Alternator,Demo Parts Co,0.00,1.00,$289.00,,$168.00,,$168.00
+,,,,,,,,,1.00,,$289.00,,$168.00,$168.00
+Page ,1,of ,1,,,,,,Date Printed: 03/01/2025,,,,,,,`;
+
+async function loadDemo() {
+  mergeRows('sales', extractInvoices(parseCsv(DEMO_CSV)), 'Demo data (built-in)');
+  mergeRows('breakup', extractBreakup(parseCsv(DEMO_BREAKUP)), 'Demo data (built-in)');
+  mergeRows('items', extractItems(parseCsv(DEMO_ITEMS)), 'Demo data (built-in)');
+  for (const n of DATASETS) await saveDataset(n);
   const span = dataSpan();
   if (span) { state.y = span.max.y; state.mo = span.max.mo; }
-  toast('Demo data loaded — this is fictional data just to explore the app.');
+  toast('Demo data loaded — fictional data on all three tabs, just to explore the app.');
   rerender();
 }
 
 /* ---------- wiring ---------- */
-function init() {
-  loadStore();
+async function init() {
+  await loadStore();
   loadFilters();
 
   $('btnImport').addEventListener('click', () => $('fileInput').click());
   $('fileInput').addEventListener('change', e => { importFiles(e.target.files); e.target.value = ''; });
   $('btnPrint').addEventListener('click', () => {
     const old = document.title;
-    document.title = 'Sales Report — ' + rangeLabel();
+    document.title = TAB_TITLE[state.tab] + ' — ' + rangeLabel();
     window.print();
     setTimeout(() => { document.title = old; }, 500);
   });
   $('btnExport').addEventListener('click', exportFiltered);
   $('btnClear').addEventListener('click', clearData);
 
+  $('tabsbar').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    state.tab = b.dataset.t; rerender();
+  });
   $('segPeriod').addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
     state.period = b.dataset.p; rerender();
@@ -881,6 +1426,9 @@ function init() {
   $('selYear').addEventListener('change', e => { state.y = +e.target.value; rerender(); });
   $('selYear2').addEventListener('change', e => { state.y = +e.target.value; rerender(); });
   $('selType').addEventListener('change', e => { state.type = e.target.value; rerender(); });
+  $('selCategory').addEventListener('change', e => { state.category = e.target.value; rerender(); });
+  $('selSort').addEventListener('change', e => { state.itemSort = e.target.value; rerender(); });
+  $('chkTotalsOnly').addEventListener('change', e => { state.totalsOnly = e.target.checked; rerender(); });
   $('dateFrom').addEventListener('change', e => { state.from = e.target.value; rerender(); });
   $('dateTo').addEventListener('change', e => { state.to = e.target.value; rerender(); });
   let searchTimer;

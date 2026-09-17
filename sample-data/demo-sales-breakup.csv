@@ -1,0 +1,16 @@
+,,,,,,,,,,,Sales Breakup Report,,,,,
+,,,,,,,,,,,From: 01/01/2025 To: 02/28/2025,,,,,
+Ref,,,,Date,Item Code,Description,Type,Customer,,License Plate,Make/Model,Amount,Cost Ex.,,HST,Profit
+LABOUR,,,,,,,,,,,,,,,,
+90001,,,,01/04/2025,LABOUR,Brake Pads R&R,Invoice,Demo Customer A,,DEMO001,HONDA CIVIC,$236.00,,$118.00,$30.68,$118.00
+90003,,,,01/15/2025,LABOUR,Alternator R&R,Invoice,Demo Customer B,,DEMO212,FORD F150,$295.00,,$147.50,$38.35,$147.50
+90007,,,,02/11/2025,PATCHLABOUR,Flat Repair,Invoice,Demo Customer A,,DEMO001,HONDA CIVIC,$40.00,,$20.00,$5.20,$20.00
+,,,,,,LABOUR Total:,,,,,,$571.00,,$285.50,$74.23,$285.50
+TIRES,,,,,,,,,,,,,,,,
+90002,,,,01/07/2025,TIRE_NOR,All-Season Tire 225/65R17,Invoice,"Demo Fleet, Inc.",,FLEET12,FORD TRANSIT,$824.00,,$616.00,$107.12,$208.00
+,,,,,,TIRES Total:,,,,,,$824.00,,$616.00,$107.12,$208.00
+CONSUMABLES,,,,,,,,,,,,,,,,
+90001,,,,01/04/2025,MISCSUPPLIES,Shop Supplies,Invoice,Demo Customer A,,DEMO001,HONDA CIVIC,$6.95,,$0.00,$0.90,$6.95
+90009,,,,02/21/2025,MISCSUPPLIES,Shop Supplies,Invoice,Demo Customer C,,DEMO933,TOYOTA COROLLA,$6.95,,$0.00,$0.90,$6.95
+,,,,,,CONSUMABLES Total:,,,,,,$13.90,,$0.00,$1.80,$13.90
+Page ,1,of ,1,,,,,,Date Printed: 03/01/2025,,,,,,,
