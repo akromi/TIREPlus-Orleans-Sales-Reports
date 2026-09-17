@@ -87,6 +87,12 @@ With the **database tables** imported (see below), three more sections appear:
   recently quoted vehicles that have not been back — names, plates and values.
 - **Job cards opened and never billed** — a different leak: opened as invoices,
   never closed, so they carry no invoice number and appear in no sales figure.
+- **Due back, and not booked** — vehicles overdue against *their own* rhythm (the
+  median gap between their past visits), so a fleet van on a six-week cycle and a
+  family car on a yearly one are judged fairly. Needs three visits of history,
+  and drops a vehicle after two years because by then it has left rather than
+  being late. Same-day repeat invoices count as one visit, not a zero-day
+  interval.
 - **Money sitting on the shelves** — stock at cost, what has not moved in 6 and
   12 months, what has never sold at all, what is over a year of cover, and what
   is sold out but still in demand. This is a snapshot: it is the one section

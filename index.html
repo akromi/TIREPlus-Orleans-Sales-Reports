@@ -1509,6 +1509,74 @@ function declinedWork(pipelineRows, salesRows, lineRows, fromKey, toKey, asOfKey
   };
 }
 
+/* Vehicles that are overdue against their OWN rhythm, not a generic interval.
+   Every vehicle sets its own baseline from its median gap between visits, so a
+   fleet van on a 6-week cycle and a family car on a yearly one are both judged
+   fairly. Needs three visits before it will call anything overdue, and ignores
+   vehicles gone more than two years — those have left, they are not late. */
+function serviceDue(salesRows, asOfKey, opts) {
+  const o = opts || {};
+  const minVisits = o.minVisits || 3;
+  const lateFactor = o.lateFactor || 1.5;
+  const goneDays = o.goneDays || 730;
+  const dayOf = k => { const d = keyToDate(k); return Math.round(Date.UTC(d.y, d.mo - 1, d.d) / 86400000); };
+  const today = dayOf(asOfKey);
+
+  const byPlate = new Map();
+  for (const s of salesRows) {
+    const p = (s.license || '').trim().toUpperCase();
+    if (!p) continue;
+    if (!byPlate.has(p)) byPlate.set(p, []);
+    byPlate.get(p).push(s);
+  }
+  const median = a => { const b = a.slice().sort((x, y) => x - y); return b[Math.floor(b.length / 2)]; };
+
+  const due = [];
+  const allIntervals = [], kmPerYear = [];
+  for (const [plate, arr] of byPlate) {
+    arr.sort((a, b) => a.dateKey - b.dateKey);
+    const gaps = [];
+    for (let i = 1; i < arr.length; i++) {
+      const g = dayOf(arr[i].dateKey) - dayOf(arr[i - 1].dateKey);
+      // Two invoices on the same day are one visit split in two, not a
+      // zero-day service interval. Counting them would drag the median down
+      // and make vehicles look overdue when they are not.
+      if (g > 0) { gaps.push(g); allIntervals.push(g); }
+    }
+    // Distance travelled between visits, ignoring impossible readings.
+    const odo = arr.filter(s => s.odometer > 100 && s.odometer < 500000);
+    for (let i = 1; i < odo.length; i++) {
+      const dk = odo[i].odometer - odo[i - 1].odometer;
+      const dd = dayOf(odo[i].dateKey) - dayOf(odo[i - 1].dateKey);
+      if (dd >= 30 && dk > 0 && dk < 100000) kmPerYear.push(dk / dd * 365);
+    }
+    if (arr.length < minVisits || !gaps.length) continue;
+    const usual = median(gaps);
+    if (usual < 14 || usual > 900) continue;          // too erratic to judge
+    const last = arr[arr.length - 1];
+    const since = today - dayOf(last.dateKey);
+    if (since <= usual * lateFactor || since > goneDays) continue;
+    due.push({
+      plate, customer: last.customer,
+      vehicle: [last.make, last.model].filter(Boolean).join(' '),
+      buildDate: last.buildDate,
+      visits: arr.length, usual, since,
+      lastVisit: last.dateKey,
+      avgSpend: arr.reduce((a, s) => a + s.exHst, 0) / arr.length,
+      odometer: last.odometer,
+    });
+  }
+  due.sort((a, b) => b.avgSpend - a.avgSpend);
+  return {
+    due,
+    atStake: due.reduce((a, r) => a + r.avgSpend, 0),
+    vehicles: byPlate.size,
+    returning: [...byPlate.values()].filter(a => a.length > 1).length,
+    medianInterval: allIntervals.length ? median(allIntervals) : null,
+    medianKmPerYear: kmPerYear.length ? median(kmPerYear) : null,
+  };
+}
+
 // Job cards opened as invoices but never closed — billing leakage rather than
 // declined work, and a different fix (bookkeeping, not selling).
 function staleJobCards(pipelineRows, fromKey, toKey) {
@@ -2675,6 +2743,31 @@ function renderDashboardTab() {
     }
   }
 
+  /* --- service due: who is late against their own rhythm --- */
+  let dueSec = '';
+  if (sales.some(s => s.license) && sales.some(s => s.odometer > 0 || s.make)) {
+    const sd = serviceDue(sales, cov.maxKey);
+    if (sd.due.length) {
+      const dueTable = rankedTable('Overdue for a visit', sd.due.slice(0, 12),
+        r => r.avgSpend, r => r.customer,
+        r => [r.plate, r.vehicle, r.buildDate].filter(Boolean).join(' · '), [
+          { label: 'Usual', width: '52px', cell: r => r.usual + 'd' },
+          { label: 'Since', width: '54px', cell: r => '<strong>' + r.since + 'd</strong>' },
+          { label: 'Visits', width: '50px', cell: r => r.visits },
+          { label: 'Avg spend', width: '86px', cell: r => locMoney(r.avgSpend) },
+        ]);
+      dueSec = '<div class="dash-sec"><h3>Due back, and not booked</h3>' +
+        '<p class="why">Each vehicle is judged against <em>its own</em> rhythm — the median gap between its past visits — so a ' +
+        'fleet van on a six-week cycle and a family car on a yearly one are both treated fairly. Listed once it is half again ' +
+        'past its usual interval, with at least three visits of history, and dropped after two years because by then it has left ' +
+        'rather than being late. <strong>' + sd.due.length.toLocaleString('en-CA') + '</strong> vehicles qualify, together worth ' +
+        '<strong>' + locMoney(sd.atStake) + '</strong> at their typical spend' +
+        (sd.medianInterval ? '. Typical visit gap across the shop is ' + sd.medianInterval + ' days' : '') +
+        (sd.medianKmPerYear ? ', and the median vehicle covers ' + Math.round(sd.medianKmPerYear).toLocaleString('en-CA') + ' km a year' : '') +
+        '.</p>' + dueTable + '</div>';
+    }
+  }
+
   /* --- vehicles (from the breakup export's Make/Model + plate columns) --- */
   let vehSec = '';
   if (brk.length) {
@@ -2707,7 +2800,7 @@ function renderDashboardTab() {
     '<div class="dash-sec"><h3>This period against the ones that matter</h3>' +
     '<p class="why">The same measures beside the previous period and the same period a year earlier.</p>' +
     cmpTable + '</div>' +
-    trendSec + yoySec + seasSec + mixSec + whoSec + attachSec + declinedSec + vehSec + invSec +
+    trendSec + yoySec + seasSec + mixSec + whoSec + attachSec + declinedSec + dueSec + vehSec + invSec +
     '<div class="rpt-footer" style="margin-top:20px"><span>' + sales.length.toLocaleString('en-CA') +
     ' transactions on file · ' + fmtDateMdy(keyToDate(cov.minKey).y, keyToDate(cov.minKey).mo, keyToDate(cov.minKey).d) +
     ' → ' + fmtDateMdy(keyToDate(cov.maxKey).y, keyToDate(cov.maxKey).mo, keyToDate(cov.maxKey).d) +
