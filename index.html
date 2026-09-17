@@ -1187,6 +1187,44 @@ function vehicleStats(breakupRows, fromKey, toKey, limit) {
   };
 }
 
+// Add-on services worth attaching to a tyre sale. Matched on item code first,
+// then description, so a renamed part still lands in the right bucket.
+const ATTACH_TRIGGER = ['TIRE_NOR', 'TIRE_OR', 'TIRE_NOR19', 'TIRE_WIN'];
+const ATTACH_SERVICES = [
+  { key: 'Alignment', match: ['ALIGN', 'WACAR', 'WATRUCK'] },
+  { key: 'TPMS / valves', match: ['TPMS', 'TIREVALVE', 'SENSOR', 'VALVE'] },
+  { key: 'Nitrogen fill', match: ['NITRO'] },
+  { key: 'Tire storage', match: ['TIRESTORAGE', 'STORAGE'] },
+  { key: 'Road hazard / warranty', match: ['HAZARD', 'WARRANTY', 'ROADHAZ'] },
+];
+
+// What share of tyre sales also picked up each add-on. Computed per invoice,
+// so an invoice counts once however many lines it has.
+function attachRates(breakupRows, fromKey, toKey) {
+  const inv = new Map();
+  for (const r of breakupRows) {
+    if (fromKey != null && r.dateKey < fromKey) continue;
+    if (toKey != null && r.dateKey > toKey) continue;
+    let e = inv.get(r.ref);
+    if (!e) { e = { tokens: [], amount: 0 }; inv.set(r.ref, e); }
+    e.tokens.push((r.code + ' ' + r.desc).toUpperCase());
+    e.amount += r.amount;
+  }
+  const hits = (e, list) => e.tokens.some(t => list.some(m => t.includes(m)));
+  const tyre = [...inv.values()].filter(e => hits(e, ATTACH_TRIGGER));
+  const services = ATTACH_SERVICES.map(s => {
+    const withIt = tyre.filter(e => hits(e, s.match));
+    const without = tyre.filter(e => !hits(e, s.match));
+    const avg = arr => arr.length ? arr.reduce((a, e) => a + e.amount, 0) / arr.length : 0;
+    return {
+      key: s.key, n: withIt.length,
+      rate: tyre.length ? withIt.length / tyre.length * 100 : 0,
+      avgWith: avg(withIt), avgWithout: avg(without),
+    };
+  }).filter(s => s.n > 0 || s.key === 'Alignment');
+  return { tyreInvoices: tyre.length, totalInvoices: inv.size, services };
+}
+
 // Customers whose first-ever invoice falls inside the window, vs those who had
 // been seen before it. Needs the full history, not just the window.
 function newVsReturning(rows, fromKey, toKey) {
@@ -2090,6 +2128,28 @@ function renderDashboardTab() {
       (tc.rows.reduce((a, r) => a + r.exHst, 0) / cur.exHst * 100).toFixed(0) + '% of the period’s revenue.' : '.') + '</p>' +
     '<div class="dash-split"><div>' + custTable + '</div><div>' + itemTable + '</div></div></div>';
 
+  /* --- attach rate: the upsell that is or is not happening --- */
+  let attachSec = '';
+  if (brk.length) {
+    const at = attachRates(brk, dateKeyOfPoint(range.from), dateKeyOfPoint(cmp.to));
+    if (at.tyreInvoices >= 5) {
+      const rowsHtml = at.services.map(s =>
+        '<tr><td>' + esc(s.key) + '</td>' +
+        '<td class="bar" style="width:34%"><i style="width:' + f1(Math.min(100, s.rate)) + '%"></i></td>' +
+        '<td class="num"><strong>' + s.rate.toFixed(1) + '%</strong></td>' +
+        '<td class="num">' + s.n.toLocaleString('en-CA') + '</td>' +
+        '<td class="num">' + locMoney(s.avgWith) + '</td>' +
+        '<td class="num">' + locMoney(s.avgWithout) + '</td></tr>').join('');
+      attachSec = '<div class="dash-sec"><h3>Attach rate on tire jobs</h3>' +
+        '<p class="why">Of the <strong>' + at.tyreInvoices.toLocaleString('en-CA') + '</strong> invoices in this period that sold tires, ' +
+        'how many also picked up each add-on. The last two columns compare the average tire invoice with and without it — ' +
+        'bigger jobs naturally attract more add-ons, so read them as a size difference, not a promise.</p>' +
+        '<table class="ranked"><thead><tr><th>Add-on</th><th></th><th class="num">Attach rate</th>' +
+        '<th class="num">Invoices</th><th class="num">Avg with</th><th class="num">Avg without</th></tr></thead><tbody>' +
+        rowsHtml + '</tbody></table></div>';
+    }
+  }
+
   /* --- vehicles (from the breakup export's Make/Model + plate columns) --- */
   let vehSec = '';
   if (brk.length) {
@@ -2122,7 +2182,7 @@ function renderDashboardTab() {
     '<div class="dash-sec"><h3>This period against the ones that matter</h3>' +
     '<p class="why">The same measures beside the previous period and the same period a year earlier.</p>' +
     cmpTable + '</div>' +
-    trendSec + yoySec + seasSec + mixSec + whoSec + vehSec +
+    trendSec + yoySec + seasSec + mixSec + whoSec + attachSec + vehSec +
     '<div class="rpt-footer" style="margin-top:20px"><span>' + sales.length.toLocaleString('en-CA') +
     ' transactions on file · ' + fmtDateMdy(keyToDate(cov.minKey).y, keyToDate(cov.minKey).mo, keyToDate(cov.minKey).d) +
     ' → ' + fmtDateMdy(keyToDate(cov.maxKey).y, keyToDate(cov.maxKey).mo, keyToDate(cov.maxKey).d) +

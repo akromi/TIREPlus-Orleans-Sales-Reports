@@ -57,6 +57,12 @@ view to one month, one year, a custom range — or even one customer.
   do not earn alike, so the mix shifting matters as much as the total.
 - **Who and what drove the period** — top customers and top items, with new vs
   returning customer counts.
+- **Attach rate on tire jobs** — of the invoices that sold tires, how many also
+  picked up an alignment, TPMS/valves, nitrogen, storage or road hazard. This is
+  the upsell that is or is not happening; on the 2023–2026 data the alignment
+  attach rate is **2.8%**. (Tire invoices *with* an alignment average far more
+  than those without, but bigger jobs naturally attract more add-ons, so read
+  that gap as a size difference rather than a promise.)
 - **Vehicles through the shop** — makes ranked by revenue, distinct vehicles and
   repeat-visit rate, from the Make/Model and plate columns of the breakup export.
 
