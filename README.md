@@ -21,9 +21,20 @@ exports and turns each into a filterable, print-ready report:
 2. Double-click `index.html` — it opens in your browser (Chrome or Edge
    recommended for printing).
 3. Drag & drop your **CSV exports** onto the page (or click *Import CSV*). You
-   can drop all of them at once — each file's type is detected automatically
-   from its title row, and the raw exports work as-is: the app skips title
-   blocks, repeated page headers, subtotal rows and "Page x of y" lines.
+   can drop all of them at once — each file's type is detected automatically,
+   and the raw exports work as-is: the app skips title blocks, repeated page
+   headers, subtotal rows and "Page x of y" lines.
+
+   Two families of file are understood, and they can be mixed freely:
+
+   | Family | Files | What it adds |
+   | --- | --- | --- |
+   | **Reports** | Sales Report, Sales Breakup, Item Sales | The four core tabs |
+   | **Database tables** | `invoice`, `invoiceItem`, `product` | Declined work, unbilled job cards, stock analysis, odometer and vehicle data |
+
+   Invoices merge on their reference, so importing a report export *and* the
+   invoice table for the same period does not double-count anything — the
+   richer row simply wins.
 4. Pick a month (or a full year, a custom date range, or all data), and switch
    tabs to see transactions, categories or items for that period.
 5. Click **Print report**. In the print dialog you can send it to a printer or
@@ -66,6 +77,21 @@ view to one month, one year, a custom range — or even one customer.
 - **Vehicles through the shop** — makes ranked by revenue, distinct vehicles and
   repeat-visit rate, from the Make/Model and plate columns of the breakup export.
 
+With the **database tables** imported (see below), three more sections appear:
+
+- **Work you recommended that never happened** — every quote still on file is
+  work that was declined, because an accepted quote is upgraded in place and
+  stops being a quote. So this is a dollar figure, not a conversion rate (a
+  conversion rate is not computable from this data and the app does not invent
+  one). Split by kind of work and by vehicle age, plus a **call-back list** of
+  recently quoted vehicles that have not been back — names, plates and values.
+- **Job cards opened and never billed** — a different leak: opened as invoices,
+  never closed, so they carry no invoice number and appear in no sales figure.
+- **Money sitting on the shelves** — stock at cost, what has not moved in 6 and
+  12 months, what has never sold at all, what is over a year of cover, and what
+  is sold out but still in demand. This is a snapshot: it is the one section
+  that ignores the date filter.
+
 Every chart is hand-rolled inline SVG (no chart library, nothing downloaded) and
 prints to A4 with the rest of the report.
 
@@ -86,6 +112,25 @@ ignores them, so this one does not:
    trend. Treat pre-2023 profit and GP% as overstated.
 3. **The three exports do not reconcile** (see below), so each chart states which
    one it is drawn from rather than silently mixing them.
+
+### Reading the database tables correctly
+
+These were reconciled against the trusted Sales Report export before being used
+for anything, and the rules are baked into the parser:
+
+- **Real sales are `invoice_status != 'O'`**, which yields exactly the report's
+  10,056 invoices. `invoice_type 'C'` rows (credits) are stored positive and are
+  sign-flipped. Field mapping: Ex HST = `subtotal`, HST = `gst`,
+  D/C = `discount_on_subtotal`, Total = `total`, Cost = `cost`.
+- **Quotes and unclosed jobs have no invoice number at all** — only a job card
+  number. Keying on `invoice_number` silently drops all 2,294 of them.
+- **On `invoiceItem`, `amount` includes tax.** Line revenue uses `subtotal`,
+  which rebuilds the invoice subtotal on 10,019 of 10,056 invoices. Line-level
+  cost does *not* reconcile (about 2% under), so invoice-level cost stays
+  authoritative for margin.
+- **Stock means `quantity_on_hand > 0`.** Thousands of service and fee codes are
+  billed without ever being stocked and sit at large negative counts; including
+  them would swamp every inventory total.
 
 ## Features
 

@@ -1429,6 +1429,194 @@ function attachRates(breakupRows, fromKey, toKey) {
   return { tyreInvoices: tyre.length, totalInvoices: inv.size, services };
 }
 
+/* Work that was recommended and never done.
+   A quote in this system is never "pending": when a customer accepts, the job
+   card is upgraded in place and stops being a quote row. Every surviving quote
+   has a blank invoice number and status 'O'. So these rows are, by
+   construction, the work that was declined — which is why this measures
+   DOLLARS DECLINED and not a conversion rate. A conversion rate is not
+   computable here (no quote job card appears among the invoice job cards) and
+   inventing one would be worse than useless. */
+function declinedWork(pipelineRows, salesRows, lineRows, fromKey, toKey, asOfKey) {
+  const inWin = r => (fromKey == null || r.dateKey >= fromKey) && (toKey == null || r.dateKey <= toKey);
+  const quotes = pipelineRows.filter(r => r.kind === 'quote' && inWin(r));
+  const sold = salesRows.filter(inWin);
+  if (!quotes.length && !sold.length) return null;
+  const quoted = quotes.reduce((a, r) => a + r.subtotal, 0);
+  const soldValue = sold.reduce((a, r) => a + r.exHst, 0);
+
+  // Split by the product_type field, which is fully populated and needs no
+  // keyword guessing: S = parts, J = labour, T = tyres, W = wheel/tyre service.
+  const qRefs = new Set(quotes.map(r => r.ref));
+  const soldRefs = new Set(sold.map(r => r.ref));
+  const TYPE_LABEL = { S: 'Parts', J: 'Labour', T: 'Tires', W: 'Wheel & tire service' };
+  const byType = new Map();
+  for (const l of lineRows) {
+    if (!l.productType) continue;
+    const isQuote = qRefs.has(l.ref), isSold = l.sold && soldRefs.has(l.ref);
+    if (!isQuote && !isSold) continue;
+    const k = l.productType;
+    const e = byType.get(k) || { type: k, label: TYPE_LABEL[k] || k, quoted: 0, sold: 0 };
+    if (isQuote) e.quoted += l.subtotal; else e.sold += l.rev;
+    byType.set(k, e);
+  }
+  // Drop stray type codes with negligible volume — they add a row to the table
+  // and nothing to the decision.
+  const typeTotal = [...byType.values()].reduce((a, e) => a + e.quoted + e.sold, 0);
+  const types = [...byType.values()]
+    .map(e => Object.assign(e, { share: (e.quoted + e.sold) ? e.quoted / (e.quoted + e.sold) * 100 : 0 }))
+    .filter(e => (e.quoted + e.sold) > typeTotal * 0.005)
+    .sort((a, b) => b.quoted - a.quoted);
+
+  // Leak against vehicle age — the clearest single explanation of where it goes.
+  const ageOf = r => {
+    const b = parseInt((r.buildDate || '').slice(0, 4), 10);
+    if (!b) return null;
+    const a = r.y - b;
+    return (a < 0 || a > 40) ? null : a;
+  };
+  const BANDS = [[0, 3, '0–3 yr'], [4, 7, '4–7 yr'], [8, 11, '8–11 yr'], [12, 15, '12–15 yr'], [16, 99, '16+ yr']];
+  const bandOf = a => (BANDS.find(b => a >= b[0] && a <= b[1]) || BANDS[BANDS.length - 1])[2];
+  const ages = new Map(BANDS.map(b => [b[2], { band: b[2], quoted: 0, sold: 0, n: 0 }]));
+  for (const r of quotes) { const a = ageOf(r); if (a == null) continue; const e = ages.get(bandOf(a)); e.quoted += r.subtotal; e.n++; }
+  for (const r of sold) { const a = ageOf(r); if (a == null) continue; ages.get(bandOf(a)).sold += r.exHst; }
+  const ageBands = [...ages.values()]
+    .map(e => Object.assign(e, { share: (e.quoted + e.sold) ? e.quoted / (e.quoted + e.sold) * 100 : 0 }))
+    .filter(e => e.quoted > 0 || e.sold > 0);
+
+  // The call-back list: recent quotes on vehicles that have not been back.
+  // Deliberately measured over a fixed recent window rather than the selected
+  // period, because it is an action list, not a report.
+  const recallFrom = shiftKeyMonths(asOfKey, -3);
+  const lastVisit = new Map();
+  for (const s of salesRows) {
+    const p = (s.license || '').toUpperCase();
+    if (!p) continue;
+    const prev = lastVisit.get(p);
+    if (prev === undefined || s.dateKey > prev) lastVisit.set(p, s.dateKey);
+  }
+  const recall = pipelineRows
+    .filter(r => r.kind === 'quote' && r.dateKey >= recallFrom && r.license)
+    .filter(r => (lastVisit.get(r.license.toUpperCase()) || 0) < r.dateKey)
+    .sort((a, b) => b.subtotal - a.subtotal);
+
+  return {
+    quotes: quotes.length, quoted, soldValue,
+    perDollar: soldValue ? quoted / soldValue : 0,
+    share: (quoted + soldValue) ? quoted / (quoted + soldValue) * 100 : 0,
+    types, ageBands,
+    recall, recallFrom, recallValue: recall.reduce((a, r) => a + r.subtotal, 0),
+  };
+}
+
+// Job cards opened as invoices but never closed — billing leakage rather than
+// declined work, and a different fix (bookkeeping, not selling).
+function staleJobCards(pipelineRows, fromKey, toKey) {
+  const rows = pipelineRows.filter(r =>
+    r.kind === 'open' && r.invType === 'I' &&
+    (fromKey == null || r.dateKey >= fromKey) && (toKey == null || r.dateKey <= toKey));
+  const byYear = new Map();
+  for (const r of rows) {
+    const e = byYear.get(r.y) || { y: r.y, n: 0, value: 0 };
+    e.n++; e.value += r.subtotal;
+    byYear.set(r.y, e);
+  }
+  return {
+    n: rows.length,
+    value: rows.reduce((a, r) => a + r.subtotal, 0),
+    years: [...byYear.values()].sort((a, b) => a.y - b.y),
+    rows: rows.slice().sort((a, b) => b.subtotal - a.subtotal),
+  };
+}
+
+function shiftKeyMonths(dk, delta) {
+  const p = keyToDate(dk);
+  const t = p.y * 12 + (p.mo - 1) + delta;
+  const y = Math.floor(t / 12), mo = (t % 12 + 12) % 12 + 1;
+  return dateKeyOf(y, mo, Math.min(p.d, daysInMonth(y, mo)));
+}
+
+/* Inventory is a SNAPSHOT of what is on the shelves right now — unlike every
+   other section it does not move with the selected period. Velocity is
+   measured over the 12 months ending at the most recent transaction on file.
+
+   Two rules earned by the data:
+     * Only quantity_on_hand > 0 counts as stock. Thousands of service codes
+       (LABOUR, DISPFEE, TIREVALVE…) are decremented without ever being
+       stocked, so they sit at large negative counts and would otherwise
+       swamp every total.
+     * "Sold out" is only claimed for an item whose product group actually
+       contains stocked goods, and which has a cost. Without that test the
+       list fills up with labour and fee codes that are permanently at zero. */
+function inventoryAnalysis(products, lines, asOfKey) {
+  if (!products.length) return null;
+  const c12 = shiftKeyMonths(asOfKey, -12);
+  const c6 = shiftKeyMonths(asOfKey, -6);
+  const units12 = new Map(), lastSold = new Map(), rev12 = new Map();
+  for (const l of lines) {
+    if (!l.sold || !l.code || !l.dateKey) continue;
+    const prev = lastSold.get(l.code);
+    if (prev === undefined || l.dateKey > prev) lastSold.set(l.code, l.dateKey);
+    if (l.dateKey >= c12) {
+      units12.set(l.code, (units12.get(l.code) || 0) + l.qty);
+      rev12.set(l.code, (rev12.get(l.code) || 0) + l.rev);
+    }
+  }
+  const stocked = products.filter(p => p.qoh > 0);
+  const decorate = p => {
+    const u = units12.get(p.code) || 0;
+    return {
+      code: p.code, desc: p.desc, group: p.group, supplier: p.supplier,
+      qoh: p.qoh, cost: p.cost, retail: p.retail, value: p.value,
+      units12: u, rev12: rev12.get(p.code) || 0,
+      lastSold: lastSold.get(p.code) || 0,
+      monthsCover: u > 0 ? p.qoh / (u / 12) : null,
+    };
+  };
+  const rows = stocked.map(decorate);
+  const sum = a => a.reduce((x, p) => x + p.value, 0);
+  const dead12 = rows.filter(p => p.lastSold < c12);
+  const dead6 = rows.filter(p => p.lastSold < c6);
+  const never = rows.filter(p => !p.lastSold);
+  const overstock = rows.filter(p => p.monthsCover != null && p.monthsCover > 12);
+
+  const stockedGroups = new Set(stocked.filter(p => p.group).map(p => p.group));
+  const soldOut = products
+    .filter(p =>
+      p.qoh === 0 && p.cost > 0 &&
+      p.group && stockedGroups.has(p.group) &&
+      // The shop codes labour and service operations SVC-*; 73 such codes
+      // exist and not one has ever carried stock, so they are never "sold out".
+      !/^SVC-/i.test(p.code) &&
+      (units12.get(p.code) || 0) > 0 && (rev12.get(p.code) || 0) > 0)
+    .map(decorate)
+    .sort((a, b) => b.units12 - a.units12);
+
+  const groups = new Map();
+  for (const p of rows) {
+    const k = p.group || '(ungrouped)';
+    const g = groups.get(k) || { name: k, skus: 0, units: 0, value: 0, dead: 0 };
+    g.skus++; g.units += p.qoh; g.value += p.value;
+    if (p.lastSold < c12) g.dead += p.value;
+    groups.set(k, g);
+  }
+
+  return {
+    asOfKey,
+    skus: rows.length,
+    units: rows.reduce((a, p) => a + p.qoh, 0),
+    value: sum(rows),
+    retailValue: rows.reduce((a, p) => a + p.qoh * p.retail, 0),
+    dead12: { n: dead12.length, value: sum(dead12), rows: dead12.sort((a, b) => b.value - a.value) },
+    dead6: { n: dead6.length, value: sum(dead6) },
+    never: { n: never.length, value: sum(never) },
+    overstock: { n: overstock.length, value: sum(overstock) },
+    soldOut,
+    groups: [...groups.values()].sort((a, b) => b.value - a.value),
+    negativeStock: products.filter(p => p.qoh < 0).length,
+  };
+}
+
 // Customers whose first-ever invoice falls inside the window, vs those who had
 // been seen before it. Needs the full history, not just the window.
 function newVsReturning(rows, fromKey, toKey) {
@@ -2349,6 +2537,122 @@ function renderDashboardTab() {
       (tc.rows.reduce((a, r) => a + r.exHst, 0) / cur.exHst * 100).toFixed(0) + '% of the period’s revenue.' : '.') + '</p>' +
     '<div class="dash-split"><div>' + custTable + '</div><div>' + itemTable + '</div></div></div>';
 
+  /* --- declined work: the quotes that were never taken up --- */
+  let declinedSec = '';
+  const pipeRows = rowsOf('pipeline');
+  if (pipeRows.length) {
+    const dw = declinedWork(pipeRows, sales, rowsOf('lines'),
+      dateKeyOfPoint(range.from), dateKeyOfPoint(cmp.to), cov.maxKey);
+    if (dw && dw.quotes) {
+      const tiles = '<div class="kpis">' +
+        '<div class="kpi"><div class="k">Recommended, not done</div><div class="v neg">' + locMoney(dw.quoted) + '</div>' +
+          '<div class="deltas"><span class="d">' + dw.quotes.toLocaleString('en-CA') + ' quotes in this period</span></div></div>' +
+        '<div class="kpi"><div class="k">Per $1 actually sold</div><div class="v">' + locMoney(dw.perDollar).replace('$', '$') + '</div>' +
+          '<div class="deltas"><span class="d">of work walked away</span></div></div>' +
+        '<div class="kpi"><div class="k">Share of all work quoted</div><div class="v">' + dw.share.toFixed(1) + '%</div>' +
+          '<div class="deltas"><span class="d">declined rather than sold</span></div></div>' +
+        (dw.recall.length ? '<div class="kpi"><div class="k">Worth calling back</div><div class="v">' + locMoney(dw.recallValue) + '</div>' +
+          '<div class="deltas"><span class="d">' + dw.recall.length + ' vehicles, last 3 months</span></div></div>' : '') +
+        '</div>';
+
+      const typeRows = dw.types.map(t => '<tr><td>' + esc(t.label) + '</td>' +
+        '<td class="bar" style="width:26%"><i style="width:' + f1(Math.min(100, t.share)) + '%"></i></td>' +
+        '<td class="num"><strong>' + t.share.toFixed(1) + '%</strong></td>' +
+        '<td class="num">' + locMoney(t.quoted) + '</td><td class="num">' + locMoney(t.sold) + '</td></tr>').join('');
+      const typeTable = '<table class="ranked"><thead><tr><th>Kind of work</th><th></th>' +
+        '<th class="num">Declined</th><th class="num">Not done</th><th class="num">Sold</th></tr></thead><tbody>' +
+        typeRows + '</tbody></table>';
+
+      const ageRows = dw.ageBands.map(a => '<tr><td>' + esc(a.band) + '</td>' +
+        '<td class="bar" style="width:26%"><i style="width:' + f1(Math.min(100, a.share)) + '%"></i></td>' +
+        '<td class="num"><strong>' + a.share.toFixed(1) + '%</strong></td>' +
+        '<td class="num">' + locMoney(a.quoted) + '</td><td class="num">' + locMoney(a.sold) + '</td></tr>').join('');
+      const ageTable = '<table class="ranked"><thead><tr><th>Vehicle age</th><th></th>' +
+        '<th class="num">Declined</th><th class="num">Not done</th><th class="num">Sold</th></tr></thead><tbody>' +
+        ageRows + '</tbody></table>';
+
+      const rf = keyToDate(dw.recallFrom);
+      const recallTable = dw.recall.length ? rankedTable(
+        'Quoted since ' + fmtDateMdy(rf.y, rf.mo, rf.d) + ', not seen since',
+        dw.recall.slice(0, 12), r => r.subtotal,
+        r => r.customer, r => [r.license, (r.make + ' ' + r.model).trim(), r.buildDate].filter(Boolean).join(' · '), [
+          { label: 'Quoted', width: '46px', cell: r => fmtDateMdy(r.y, r.mo, r.d).slice(0, 5) },
+          { label: 'Value', width: '84px', cell: r => locMoney(r.subtotal) },
+        ]) : '';
+
+      declinedSec = '<div class="dash-sec"><h3>Work you recommended that never happened</h3>' +
+        '<p class="why">When a customer says yes, the job card becomes an invoice — so every quote still on file is work that was ' +
+        'turned down. That makes this a dollar figure, not a conversion rate: a conversion rate cannot be computed from this data, ' +
+        'because accepted quotes stop being quotes. Tires sell themselves; repair work is where the money walks.</p>' +
+        tiles +
+        '<div class="dash-split" style="margin-top:14px"><div>' + typeTable + '</div><div>' + ageTable + '</div></div>' +
+        (recallTable ? '<div style="margin-top:14px">' + recallTable + '</div>' : '') +
+        '</div>';
+    }
+
+    const stale = staleJobCards(pipeRows, dateKeyOfPoint(range.from), dateKeyOfPoint(cmp.to));
+    const staleAll = staleJobCards(pipeRows, null, null);
+    if (staleAll.n) {
+      declinedSec += '<div class="dash-sec"><h3>Job cards opened and never billed</h3>' +
+        '<p class="why">Different from a declined quote: these were opened as invoices, not quotes, and never closed — so they carry ' +
+        'no invoice number and appear in no sales figure. Some will be cancelled bookings, but they are spread evenly across four ' +
+        'years rather than clustered in recent weeks, so they are stale rather than work in progress. ' +
+        '<strong>' + staleAll.n.toLocaleString('en-CA') + '</strong> cards, ' +
+        '<strong>' + locMoney(staleAll.value) + '</strong> all-time' +
+        (stale.n ? '; ' + stale.n + ' worth ' + locMoney(stale.value) + ' in the selected period' : '') + '.</p>' +
+        '<table class="ranked"><thead><tr><th>Year opened</th><th class="num">Cards</th><th class="num">Value</th></tr></thead><tbody>' +
+        staleAll.years.map(y => '<tr><td>' + y.y + '</td><td class="num">' + y.n + '</td><td class="num">' + locMoney(y.value) + '</td></tr>').join('') +
+        '<tr class="subtotal"><td class="lbl">Total</td><td class="num">' + staleAll.n + '</td><td class="num">' + locMoney(staleAll.value) + '</td></tr>' +
+        '</tbody></table></div>';
+    }
+  }
+
+  /* --- inventory: a snapshot, deliberately not period-scoped --- */
+  let invSec = '';
+  const prodRows = rowsOf('products');
+  if (prodRows.length) {
+    const iv = inventoryAnalysis(prodRows, rowsOf('lines'), cov.maxKey);
+    if (iv && iv.skus) {
+      const asOf = keyToDate(iv.asOfKey);
+      const pct = v => iv.value ? (v / iv.value * 100).toFixed(0) + '%' : '0%';
+      const tiles = '<div class="kpis">' +
+        '<div class="kpi"><div class="k">Stock on hand</div><div class="v">' + locMoney(iv.value) + '</div>' +
+          '<div class="deltas"><span class="d">' + iv.skus.toLocaleString('en-CA') + ' items · ' +
+          Math.round(iv.units).toLocaleString('en-CA') + ' units</span></div></div>' +
+        '<div class="kpi"><div class="k">Not sold in 12 months</div><div class="v neg">' + locMoney(iv.dead12.value) + '</div>' +
+          '<div class="deltas"><span class="d">' + iv.dead12.n + ' items · ' + pct(iv.dead12.value) + ' of stock value</span></div></div>' +
+        '<div class="kpi"><div class="k">Never sold at all</div><div class="v neg">' + locMoney(iv.never.value) + '</div>' +
+          '<div class="deltas"><span class="d">' + iv.never.n + ' items</span></div></div>' +
+        '<div class="kpi"><div class="k">Over a year of cover</div><div class="v">' + locMoney(iv.overstock.value) + '</div>' +
+          '<div class="deltas"><span class="d">' + iv.overstock.n + ' items still selling, slowly</span></div></div>' +
+        '<div class="kpi"><div class="k">Sold out but selling</div><div class="v">' + iv.soldOut.length + '</div>' +
+          '<div class="deltas"><span class="d">items at zero with demand</span></div></div>' +
+        '</div>';
+
+      const deadTable = rankedTable('Biggest dead stock', iv.dead12.rows.slice(0, 10),
+        r => r.value, r => r.desc || r.code, r => r.group || r.code, [
+          { label: 'Qty', width: '44px', cell: r => fmtQty(r.qoh) },
+          { label: 'Tied up', width: '84px', cell: r => locMoney(r.value) },
+          { label: 'Last sold', width: '74px', cell: r => r.lastSold
+              ? fmtDateMdy(keyToDate(r.lastSold).y, keyToDate(r.lastSold).mo, keyToDate(r.lastSold).d)
+              : '<span style="color:var(--muted)">never</span>' },
+        ]);
+      const reorderTable = rankedTable('Sold out, still in demand', iv.soldOut.slice(0, 10),
+        r => r.units12, r => r.desc || r.code, r => r.group || r.code, [
+          { label: 'Sold 12m', width: '68px', cell: r => fmtQty(r.units12) },
+          { label: 'Revenue', width: '84px', cell: r => locMoney(r.rev12) },
+        ]);
+
+      invSec = '<div class="dash-sec"><h3>Money sitting on the shelves</h3>' +
+        '<p class="why">A snapshot of stock as it stands, not a period figure — the only section here that ignores the ' +
+        'date filter. Movement is measured over the 12 months to ' + fmtDateMdy(asOf.y, asOf.mo, asOf.d) + '. ' +
+        'Counted at cost; ' + iv.negativeStock.toLocaleString('en-CA') + ' service and fee codes carry negative counts ' +
+        'because they are billed without ever being stocked, and are excluded.</p>' +
+        tiles +
+        '<div class="dash-split" style="margin-top:14px"><div>' + deadTable + '</div><div>' + reorderTable + '</div></div></div>';
+    }
+  }
+
   /* --- attach rate: the upsell that is or is not happening --- */
   let attachSec = '';
   if (brk.length) {
@@ -2403,7 +2707,7 @@ function renderDashboardTab() {
     '<div class="dash-sec"><h3>This period against the ones that matter</h3>' +
     '<p class="why">The same measures beside the previous period and the same period a year earlier.</p>' +
     cmpTable + '</div>' +
-    trendSec + yoySec + seasSec + mixSec + whoSec + attachSec + vehSec +
+    trendSec + yoySec + seasSec + mixSec + whoSec + attachSec + declinedSec + vehSec + invSec +
     '<div class="rpt-footer" style="margin-top:20px"><span>' + sales.length.toLocaleString('en-CA') +
     ' transactions on file · ' + fmtDateMdy(keyToDate(cov.minKey).y, keyToDate(cov.minKey).mo, keyToDate(cov.minKey).d) +
     ' → ' + fmtDateMdy(keyToDate(cov.maxKey).y, keyToDate(cov.maxKey).mo, keyToDate(cov.maxKey).d) +
