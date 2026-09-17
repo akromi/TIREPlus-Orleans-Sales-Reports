@@ -314,7 +314,7 @@
     <span class="loc">Orleans · Sales Reports</span>
   </div>
   <div class="spacer"></div>
-  <button class="btn ghost" id="btnImport" title="Import one or more report CSV exports (Sales, Sales Breakup, Item Sales)">⬆ Import CSV</button>
+  <button class="btn ghost" id="btnImport" title="Import CSV exports — Sales / Sales Breakup / Item Sales reports, or invoice / invoiceItem / product tables">⬆ Import CSV</button>
   <button class="btn ghost" id="btnExport" title="Download the current view as a clean CSV">⬇ Export filtered</button>
   <button class="btn ghost danger" id="btnClear" title="Remove all imported data from this browser">Clear data</button>
   <button class="btn primary" id="btnPrint">🖨 Print report</button>
@@ -483,6 +483,12 @@ function parseMoney(s) {
 // The three known point-of-sale exports, told apart by their title row
 // (or, failing that, by their header row).
 function detectFormat(rows) {
+  // The raw database tables announce themselves in their header row.
+  const head = new Set((rows[0] || []).map(h => String(h).trim().toLowerCase()));
+  if (head.has('item_code') && head.has('quantity_on_hand')) return 'products';
+  if (head.has('invoice_number') && (head.has('unit_cost') || head.has('bundle_parent_item_code'))) return 'lines';
+  if (head.has('invoice_number') && head.has('invoice_type') && head.has('post_date')) return 'invoices';
+
   const scan = Math.min(rows.length, 12);
   for (let i = 0; i < scan; i++) {
     for (const c of rows[i]) {
@@ -501,8 +507,206 @@ function detectFormat(rows) {
   return 'sales'; // legacy behavior: try the transactions extractor
 }
 
+/* =====================================================================
+   Raw database tables (invoice / invoiceItem / product).
+   These are proper tables with a real header row, unlike the page-formatted
+   report exports, so they are read by column name.
+   ===================================================================== */
+
+// Turn a header row + data rows into objects keyed by column name.
+function tableRows(rows) {
+  if (!rows.length) return [];
+  const head = rows[0].map(h => String(h).trim().toLowerCase());
+  const out = [];
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    if (!r.length || r.every(c => !String(c).trim())) continue;
+    const o = {};
+    for (let j = 0; j < head.length; j++) o[head[j]] = r[j] == null ? '' : String(r[j]).trim();
+    out.push(o);
+  }
+  return out;
+}
+
+function num(v) {
+  const n = parseFloat(String(v || '').replace(/[$,\s]/g, ''));
+  return isFinite(n) ? n : 0;
+}
+
+/* --- invoice table ---------------------------------------------------
+   Reconciled against the Sales Report export: keeping invoice_status != 'O'
+   yields exactly the report's 10,056 invoices, and negating invoice_type 'C'
+   rows (credits are stored positive here) matches its money to within
+   $221.90 on $4.06M. Field mapping verified row by row:
+     Ex HST = subtotal, HST = gst, D/C = discount_on_subtotal,
+     Total = total, Cost = cost — all sign-flipped for credits.
+   Status 'O' rows are unclosed work and type 'Q' rows are quotes; neither is
+   a sale, so both go to a separate pipeline dataset rather than being lost. */
+function extractInvoiceTable(rows) {
+  const sales = [], pipeline = [];
+  for (const r of tableRows(rows)) {
+    const dt = parseDateCell(r['post_date']);
+    if (!dt) continue;
+    const invNo = (r['invoice_number'] || '').trim();
+    const jobCard = (r['job_card_number'] || '').trim();
+    // Quotes and unclosed jobs have no invoice number yet — they are
+    // identified by their job card until they are invoiced.
+    const ref = invNo || jobCard;
+    if (!ref) continue;
+    const type = (r['invoice_type'] || 'I').toUpperCase();
+    const status = (r['invoice_status'] || '').toUpperCase();
+    const sign = type === 'C' ? -1 : 1;
+    const base = {
+      ref,
+      invoiceNo: invNo,
+      y: dt.y, mo: dt.mo, d: dt.d,
+      dateKey: dateKeyOf(dt.y, dt.mo, dt.d),
+      customer: decodeEntities(r['display_name'] || '') || '(No customer)',
+      license: (r['plate_number'] || '').trim(),
+      advisor: '',
+      make: (r['make'] || '').trim(),
+      model: (r['model'] || '').trim(),
+      buildDate: (r['build_date'] || '').trim(),
+      bodyType: (r['body_type'] || '').trim(),
+      odometer: num(r['odometer']),
+      jobCard,
+      balanceDue: num(r['balance_due']),
+      invType: type,
+      status,
+    };
+    if (type === 'Q' || status === 'O') {
+      pipeline.push(Object.assign(base, {
+        kind: type === 'Q' ? 'quote' : 'open',
+        subtotal: num(r['subtotal']),
+        total: num(r['total']),
+        cost: num(r['cost']),
+        id: ref,
+      }));
+      continue;
+    }
+    const exHst = sign * num(r['subtotal']);
+    const dc = num(r['discount_on_subtotal']);
+    const cost = sign * num(r['cost']);
+    sales.push(Object.assign(base, {
+      type: type === 'C' ? 'Credit' : 'Invoice',
+      exHst,
+      hst: sign * num(r['gst']),
+      dc,
+      total: sign * num(r['total']),
+      cost,
+      profit: Math.round((exHst - dc - cost) * 100) / 100,
+    }));
+  }
+  return { sales, pipeline };
+}
+
+/* --- invoiceItem table ---
+   Has no date of its own — every row is joined to its invoice by
+   invoice_number (see relinkLines). */
+function extractInvoiceItemTable(rows) {
+  const out = [];
+  const occ = new Map();
+  for (const r of tableRows(rows)) {
+    const invNo = (r['invoice_number'] || '').trim();
+    const jobCard = (r['job_card_number'] || '').trim();
+    // Lines on work that is not yet invoiced carry only the job card number.
+    const ref = invNo || jobCard;
+    if (!ref) continue;
+    const code = (r['item_code'] || '').trim();
+    const amount = num(r['amount']);
+    const row = {
+      ref, code, jobCard, invoiceNo: invNo,
+      desc: decodeEntities(r['description'] || r['product_description'] || ''),
+      qty: num(r['quantity']),
+      unitPrice: num(r['unit_price']),
+      amount,
+      subtotal: num(r['subtotal']),
+      unitCost: num(r['unit_cost']),
+      costIncTax: num(r['cost_including_tax']),
+      gst: num(r['gst']),
+      hours: num(r['hours_worked']),
+      group: (r['product_group_name'] || '').trim(),
+      brand: (r['brand'] || '').trim(),
+      supplier: (r['product_supplier'] || '').trim(),
+      productType: (r['product_type'] || '').trim(),
+      bundleParent: (r['bundle_parent_item_code'] || '').trim(),
+      // dateKey / customer are stamped on by relinkLines once invoices load.
+      dateKey: 0, y: 0, mo: 0, d: 0, customer: '', license: '', vehicle: '',
+    };
+    const base = [ref, code, amount, row.qty].join('|');
+    const n = (occ.get(base) || 0) + 1;
+    occ.set(base, n);
+    row.id = base + '#' + n;
+    out.push(row);
+  }
+  return out;
+}
+
+/* --- product table --- */
+function extractProductTable(rows) {
+  const out = [];
+  for (const r of tableRows(rows)) {
+    const code = (r['item_code'] || '').trim();
+    if (!code) continue;
+    const qoh = num(r['quantity_on_hand']);
+    const cost = num(r['cost']);
+    out.push({
+      code,
+      desc: decodeEntities(r['description'] || ''),
+      brand: (r['brand'] || '').trim(),
+      supplier: (r['supplier'] || '').trim(),
+      group: (r['product_group_name'] || '').trim(),
+      productType: (r['product_type'] || '').trim(),
+      location: (r['location'] || '').trim(),
+      qoh,
+      reserved: num(r['qty_reserved']),
+      retail: num(r['retail_price']),
+      cost,
+      value: Math.round(qoh * cost * 100) / 100,
+      inactive: String(r['inactive'] || '').toLowerCase() === 'true',
+      id: code,
+    });
+  }
+  return out;
+}
+
+// invoiceItem rows carry no date; stamp each from its invoice so the ordinary
+// date filters work on them. Safe to call repeatedly, in any import order.
+function relinkLines(lines, salesRows, pipelineRows) {
+  const byRef = new Map(), byJob = new Map();
+  const index = s => {
+    byRef.set(s.ref, s);
+    if (s.invoiceNo) byRef.set(s.invoiceNo, s);
+    if (s.jobCard && !byJob.has(s.jobCard)) byJob.set(s.jobCard, s);
+  };
+  for (const s of salesRows || []) index(s);
+  for (const s of pipelineRows || []) if (!byRef.has(s.ref)) index(s);
+  let linked = 0;
+  for (const l of lines) {
+    const s = byRef.get(l.ref) || (l.jobCard && byJob.get(l.jobCard));
+    if (!s) continue;
+    l.dateKey = s.dateKey; l.y = s.y; l.mo = s.mo; l.d = s.d;
+    l.customer = s.customer; l.license = s.license;
+    l.vehicle = ((s.make || '') + ' ' + (s.model || '')).trim();
+    l.invType = s.invType; l.status = s.status;
+    // Credit lines are stored positive, like their invoice. Derived from the
+    // raw field every time, so re-linking stays idempotent.
+    //   rev  — line revenue ex tax. `amount` INCLUDES gst, so `subtotal` is
+    //          the field that reconciles to the invoice (10,009 of 10,056).
+    //   est  — indicative line cost only: it sums about 2% under the
+    //          invoice-level cost, which stays authoritative for margin.
+    const sign = s.invType === 'C' ? -1 : 1;
+    l.sign = sign;
+    l.rev = Math.round(l.subtotal * sign * 100) / 100;
+    l.est = Math.round(l.costIncTax * sign * 100) / 100;
+    l.sold = s.status !== 'O' && s.invType !== 'Q';
+    linked++;
+  }
+  return linked;
+}
+
 /* ---------- Sales Report (transactions) ---------- */
-const FALLBACK_COLS = { ref: 0, date: 4, type: 5, customer: 6, advisor: 7, license: 8, exHst: 10, hst: 11, dc: 12, total: 13, cost: 14, profit: 15 };
+const FALLBACK_COLS ={ ref: 0, date: 4, type: 5, customer: 6, advisor: 7, license: 8, exHst: 10, hst: 11, dc: 12, total: 13, cost: 14, profit: 15 };
 
 const HEADER_ALIASES = {
   ref:      ['ref', 'ref #', 'reference', 'invoice #', 'invoice'],
@@ -1253,8 +1457,13 @@ function newVsReturning(rows, fromKey, toKey) {
 const DB_NAME = 'tireplus-sales';
 const LEGACY_KEY = 'tireplusSales.data.v1';
 const FILTER_KEY = 'tireplusSales.filters.v3';
-const DATASETS = ['sales', 'breakup', 'items'];
-const DATASET_LABEL = { sales: 'Sales report', breakup: 'Sales breakup', items: 'Item sales' };
+const DATASETS = ['sales', 'breakup', 'items', 'lines', 'products', 'pipeline'];
+const DATASET_LABEL = {
+  sales: 'Invoices', breakup: 'Sales breakup', items: 'Item sales',
+  lines: 'Invoice lines', products: 'Products', pipeline: 'Quotes & open jobs',
+};
+// Datasets that carry a transaction date and therefore drive the period filter.
+const DATED_DATASETS = ['sales', 'breakup', 'items'];
 
 // store[name] = { rows: [...], files: [{name, count, at}] }
 let store = { sales: null, breakup: null, items: null };
@@ -1327,6 +1536,7 @@ async function loadStore() {
       }
     }
   } catch (e) { /* ignore */ }
+  relinkAll();
 }
 
 async function saveDataset(name) {
@@ -1338,6 +1548,13 @@ async function saveDataset(name) {
 }
 
 function idOf(name, r) { return name === 'sales' ? r.ref : r.id; }
+
+// invoiceItem rows have no date of their own — re-stamp them from whatever
+// invoices are loaded. Cheap, and safe to run after every import.
+function relinkAll() {
+  if (!store.lines || !store.lines.rows.length) return 0;
+  return relinkLines(store.lines.rows, rowsOf('sales'), rowsOf('pipeline'));
+}
 
 function mergeRows(name, newRows, fileName) {
   if (!store[name]) store[name] = { rows: [], files: [] };
@@ -1383,11 +1600,15 @@ function saveFilters() {
   try { localStorage.setItem(FILTER_KEY, JSON.stringify(state)); } catch (e) { /* ignore */ }
 }
 
-function allRows() { return DATASETS.flatMap(n => rowsOf(n)); }
+// Only the dated datasets define the period the app can show. Products have no
+// date at all, and unlinked invoice lines carry dateKey 0 until an invoice
+// table arrives, so both are excluded from the span.
+function allRows() { return DATED_DATASETS.flatMap(n => rowsOf(n)); }
 
 function dataSpan() {
   let min = null, max = null;
   for (const r of allRows()) {
+    if (!r.dateKey) continue;
     if (!min || r.dateKey < min.dateKey) min = r;
     if (!max || r.dateKey > max.dateKey) max = r;
   }
@@ -2207,8 +2428,9 @@ function renderReport() {
     $('sheet').innerHTML = `
       <div class="empty">
         <h2>No sales data loaded yet</h2>
-        <p>Import the CSV exports of your point-of-sale reports to get started:</p>
-        <p><strong>Sales Report</strong> · <strong>Sales Breakup Report</strong> · <strong>Item Sales Report</strong></p>
+        <p>Import your point-of-sale CSV exports to get started. Either family works, and they can be mixed:</p>
+        <p><strong>Reports</strong> — Sales Report · Sales Breakup · Item Sales</p>
+        <p><strong>Database tables</strong> — invoice · invoiceItem · product</p>
         <p>The file type is detected automatically. Everything stays in this browser — nothing is uploaded anywhere.</p>
         <div class="bigdrop">
           <strong>Drag &amp; drop your CSV file(s) here</strong>
@@ -2330,15 +2552,39 @@ function importFiles(fileList) {
       try {
         const rows = parseCsv(String(reader.result));
         const fmt = detectFormat(rows);
-        const parsed = fmt === 'breakup' ? extractBreakup(rows) : fmt === 'items' ? extractItems(rows) : extractInvoices(rows);
-        if (!parsed.length) failed.push(f.name);
-        else {
-          const res = mergeRows(fmt, parsed, f.name);
-          touched.add(fmt);
-          results.push(`${DATASET_LABEL[fmt]}: ${parsed.length.toLocaleString('en-CA')} rows (${res.added.toLocaleString('en-CA')} new)`);
+        if (fmt === 'invoices') {
+          // One file, two datasets: real sales and the quote/open-job pipeline.
+          const { sales, pipeline } = extractInvoiceTable(rows);
+          if (!sales.length && !pipeline.length) failed.push(f.name);
+          else {
+            if (sales.length) {
+              const r1 = mergeRows('sales', sales, f.name); touched.add('sales');
+              results.push(`Invoices: ${sales.length.toLocaleString('en-CA')} (${r1.added.toLocaleString('en-CA')} new)`);
+            }
+            if (pipeline.length) {
+              const r2 = mergeRows('pipeline', pipeline, f.name); touched.add('pipeline');
+              results.push(`Quotes & open jobs: ${pipeline.length.toLocaleString('en-CA')} (${r2.added.toLocaleString('en-CA')} new)`);
+            }
+          }
+        } else {
+          const parsed =
+            fmt === 'breakup' ? extractBreakup(rows) :
+            fmt === 'items' ? extractItems(rows) :
+            fmt === 'lines' ? extractInvoiceItemTable(rows) :
+            fmt === 'products' ? extractProductTable(rows) :
+            extractInvoices(rows);
+          if (!parsed.length) failed.push(f.name);
+          else {
+            const res = mergeRows(fmt, parsed, f.name);
+            touched.add(fmt);
+            results.push(`${DATASET_LABEL[fmt]}: ${parsed.length.toLocaleString('en-CA')} rows (${res.added.toLocaleString('en-CA')} new)`);
+          }
         }
       } catch (e) { failed.push(f.name); }
       if (++done === files.length) {
+        // Lines carry no date of their own, so re-link them to whatever
+        // invoices are now loaded before anything is saved or drawn.
+        if (relinkAll() && !touched.has('lines')) touched.add('lines');
         for (const name of touched) await saveDataset(name);
         if (results.length) {
           const span = dataSpan();
@@ -2346,7 +2592,7 @@ function importFiles(fileList) {
           if (touched.size === 1 && !rowsOf(TAB_NEEDS[state.tab] || state.tab).length) state.tab = [...touched][0];
           toast('Imported — ' + results.join(' · ') + (failed.length ? `. Could not read: ${failed.join(', ')}` : ''));
         } else {
-          toast(`No report rows found in ${failed.join(', ') || 'the selected file(s)'} — expected a Sales, Sales Breakup or Item Sales CSV export.`);
+          toast(`No rows found in ${failed.join(', ') || 'the selected file(s)'} — expected a Sales / Sales Breakup / Item Sales report export, or an invoice / invoiceItem / product table.`);
         }
         rerender();
       }
