@@ -1611,6 +1611,18 @@ function declinedWork(pipelineRows, salesRows, lineRows, fromKey, toKey, asOfKey
    fleet van on a 6-week cycle and a family car on a yearly one are both judged
    fairly. Needs three visits before it will call anything overdue, and ignores
    vehicles gone more than two years — those have left, they are not late. */
+/* How often a vehicle actually comes back, by how overdue it is. Measured by
+   backtest: take the list as it stood on 2025-09-08 and see who returned over
+   the following twelve months. Lateness predicts return sharply — one interval
+   late is worth five times a vehicle six intervals late — so the call list is
+   ranked by spend WEIGHTED by these rates, not by spend alone. */
+const RETURN_BANDS = [
+  { lo: 0, hi: 1.5, rate: 0.424, label: 'just due' },
+  { lo: 1.5, hi: 3, rate: 0.358, label: 'late' },
+  { lo: 3, hi: 6, rate: 0.137, label: 'very late' },
+  { lo: 6, hi: Infinity, rate: 0.079, label: 'probably gone' },
+];
+
 function serviceDue(salesRows, asOfKey, opts) {
   const o = opts || {};
   const minVisits = o.minVisits || 3;
@@ -1653,24 +1665,66 @@ function serviceDue(salesRows, asOfKey, opts) {
     const last = arr[arr.length - 1];
     const since = today - dayOf(last.dateKey);
     if (since <= usual * lateFactor || since > goneDays) continue;
+    const ratio = since / usual;
+    const band = RETURN_BANDS.find(b => ratio >= b.lo && ratio < b.hi) || RETURN_BANDS[RETURN_BANDS.length - 1];
+    const avgSpend = arr.reduce((a, s) => a + s.exHst, 0) / arr.length;
     due.push({
       plate, customer: last.customer,
       vehicle: [last.make, last.model].filter(Boolean).join(' '),
       buildDate: last.buildDate,
-      visits: arr.length, usual, since,
+      visits: arr.length, usual, since, ratio,
+      band: band.label, returnRate: band.rate,
       lastVisit: last.dateKey,
-      avgSpend: arr.reduce((a, s) => a + s.exHst, 0) / arr.length,
+      avgSpend,
+      // What a phone call is actually worth: how much they spend, weighted by
+      // how often vehicles this late genuinely come back.
+      expected: avgSpend * band.rate,
       odometer: last.odometer,
     });
   }
-  due.sort((a, b) => b.avgSpend - a.avgSpend);
+  due.sort((a, b) => b.expected - a.expected);
   return {
     due,
+    worthCalling: due.filter(r => r.ratio < 3),
+    expectedValue: due.reduce((a, r) => a + r.expected, 0),
     atStake: due.reduce((a, r) => a + r.avgSpend, 0),
     vehicles: byPlate.size,
     returning: [...byPlate.values()].filter(a => a.length > 1).length,
     medianInterval: allIntervals.length ? median(allIntervals) : null,
     medianKmPerYear: kmPerYear.length ? median(kmPerYear) : null,
+  };
+}
+
+/* Money outstanding, split into the two unlike things it is made of.
+   Summing balance_due across the whole table gives about $409,000, which reads
+   as accounts receivable and is not: 96% of it sits on job cards that were
+   never issued an invoice number, so nobody was ever asked to pay it. The two
+   need different actions — chase the first, finish and bill the second — so
+   the app never shows them added together. */
+function receivables(salesRows, pipelineRows, asOfKey) {
+  const owed = salesRows.filter(r => r.balanceDue > 0.005);
+  const unbilled = pipelineRows.filter(r => r.kind === 'open' && r.balanceDue > 0.005);
+  const dayOf = k => { const d = keyToDate(k); return Math.round(Date.UTC(d.y, d.mo - 1, d.d) / 86400000); };
+  const today = dayOf(asOfKey);
+  const BUCKETS = [[0, 30, '0–30 days'], [31, 90, '31–90 days'], [91, 180, '91–180 days'],
+                   [181, 365, '181–365 days'], [366, 730, '1–2 years'], [731, Infinity, 'over 2 years']];
+  const age = rows => BUCKETS.map(b => {
+    const g = rows.filter(r => { const a = today - dayOf(r.dateKey); return a >= b[0] && a <= b[1]; });
+    return { label: b[2], n: g.length, value: g.reduce((a, r) => a + r.balanceDue, 0) };
+  }).filter(b => b.n);
+  return {
+    owed: {
+      n: owed.length,
+      value: owed.reduce((a, r) => a + r.balanceDue, 0),
+      customers: new Set(owed.map(r => r.customer.toLowerCase())).size,
+      rows: owed.slice().sort((a, b) => b.balanceDue - a.balanceDue),
+    },
+    unbilled: {
+      n: unbilled.length,
+      value: unbilled.reduce((a, r) => a + r.balanceDue, 0),
+      ageing: age(unbilled),
+      recent: unbilled.filter(r => today - dayOf(r.dateKey) <= 90),
+    },
   };
 }
 
@@ -2810,6 +2864,29 @@ function renderDashboardTab() {
         '</div>';
     }
 
+    const ar = receivables(sales, pipeRows, cov.maxKey);
+    if (ar.owed.n || ar.unbilled.n) {
+      const recentValue = ar.unbilled.recent.reduce((a, r) => a + r.balanceDue, 0);
+      declinedSec += '<div class="dash-sec"><h3>Money outstanding</h3>' +
+        '<p class="why">Two unlike things that must not be added together. Adding them gives ' +
+        locMoney(ar.owed.value + ar.unbilled.value) + ', which reads as money owed to you — but ' +
+        Math.round(ar.unbilled.value / (ar.owed.value + ar.unbilled.value) * 100) + '% of it sits on job cards that were never ' +
+        'given an invoice number, so nobody has ever been asked to pay it. Chase the first, finish and bill the second.</p>' +
+        '<div class="kpis">' +
+        '<div class="kpi"><div class="k">Actually owed to you</div><div class="v">' + locMoney(ar.owed.value) + '</div>' +
+          '<div class="deltas"><span class="d">' + ar.owed.n + ' invoices · ' + ar.owed.customers + ' customers</span></div></div>' +
+        '<div class="kpi"><div class="k">Never billed to anyone</div><div class="v neg">' + locMoney(ar.unbilled.value) + '</div>' +
+          '<div class="deltas"><span class="d">' + ar.unbilled.n + ' open job cards</span></div></div>' +
+        '<div class="kpi"><div class="k">Still live (under 90 days)</div><div class="v">' + locMoney(recentValue) + '</div>' +
+          '<div class="deltas"><span class="d">' + ar.unbilled.recent.length + ' cards worth finishing now</span></div></div>' +
+        '</div>' +
+        '<table class="ranked" style="margin-top:12px"><thead><tr><th>Age of unbilled job card</th>' +
+        '<th class="num">Cards</th><th class="num">Value</th></tr></thead><tbody>' +
+        ar.unbilled.ageing.map(b => '<tr><td>' + esc(b.label) + '</td><td class="num">' + b.n + '</td>' +
+          '<td class="num">' + locMoney(b.value) + '</td></tr>').join('') +
+        '</tbody></table></div>';
+    }
+
     const stale = staleJobCards(pipeRows, dateKeyOfPoint(range.from), dateKeyOfPoint(cmp.to));
     const staleAll = staleJobCards(pipeRows, null, null);
     if (staleAll.n) {
@@ -2900,22 +2977,27 @@ function renderDashboardTab() {
   if (sales.some(s => s.license) && sales.some(s => s.odometer > 0 || s.make)) {
     const sd = serviceDue(sales, cov.maxKey);
     if (sd.due.length) {
-      const dueTable = rankedTable('Overdue for a visit', sd.due.slice(0, 12),
-        r => r.avgSpend, r => r.customer,
+      const dueTable = rankedTable('Ring these first', sd.due.slice(0, 12),
+        r => r.expected, r => r.customer,
         r => [r.plate, r.vehicle, r.buildDate].filter(Boolean).join(' · '), [
-          { label: 'Usual', width: '52px', cell: r => r.usual + 'd' },
-          { label: 'Since', width: '54px', cell: r => '<strong>' + r.since + 'd</strong>' },
-          { label: 'Visits', width: '50px', cell: r => r.visits },
-          { label: 'Avg spend', width: '86px', cell: r => locMoney(r.avgSpend) },
+          { label: 'Usual', width: '48px', cell: r => r.usual + 'd' },
+          { label: 'Since', width: '50px', cell: r => '<strong>' + r.since + 'd</strong>' },
+          { label: 'Odds', width: '70px', cell: r => Math.round(r.returnRate * 100) + '% <span style="color:var(--muted)">' + esc(r.band) + '</span>' },
+          { label: 'Avg spend', width: '80px', cell: r => locMoney(r.avgSpend) },
+          { label: 'Worth', width: '76px', cell: r => '<strong>' + locMoney(r.expected) + '</strong>' },
         ]);
       dueSec = '<div class="dash-sec"><h3>Due back, and not booked</h3>' +
         '<p class="why">Each vehicle is judged against <em>its own</em> rhythm — the median gap between its past visits — so a ' +
-        'fleet van on a six-week cycle and a family car on a yearly one are both treated fairly. Listed once it is half again ' +
-        'past its usual interval, with at least three visits of history, and dropped after two years because by then it has left ' +
-        'rather than being late. <strong>' + sd.due.length.toLocaleString('en-CA') + '</strong> vehicles qualify, together worth ' +
-        '<strong>' + locMoney(sd.atStake) + '</strong> at their typical spend' +
-        (sd.medianInterval ? '. Typical visit gap across the shop is ' + sd.medianInterval + ' days' : '') +
-        (sd.medianKmPerYear ? ', and the median vehicle covers ' + Math.round(sd.medianKmPerYear).toLocaleString('en-CA') + ' km a year' : '') +
+        'fleet van on a six-week cycle and a family car on a yearly one are both treated fairly. ' +
+        '<strong>' + sd.due.length.toLocaleString('en-CA') + '</strong> vehicles are overdue, worth ' +
+        locMoney(sd.atStake) + ' if every one came back.<br>' +
+        'They are ranked by what a call is actually worth, not by who spends most. Testing the list as it stood a year ago ' +
+        'against what really happened: vehicles barely due returned <strong>42%</strong> of the time and spent about $525, ' +
+        'while those six intervals late returned <strong>8%</strong> and spent $91. So chase them early — ' +
+        '<strong>' + sd.worthCalling.length.toLocaleString('en-CA') + '</strong> are still inside the window where calling pays, ' +
+        'with a realistic <strong>' + locMoney(sd.expectedValue) + '</strong> of work behind the whole list' +
+        (sd.medianInterval ? '. The shop’s typical gap between visits is ' + sd.medianInterval + ' days' : '') +
+        (sd.medianKmPerYear ? ' and the median vehicle covers ' + Math.round(sd.medianKmPerYear).toLocaleString('en-CA') + ' km a year' : '') +
         '.</p>' + dueTable + '</div>';
     }
   }

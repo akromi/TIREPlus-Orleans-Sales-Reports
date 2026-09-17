@@ -87,12 +87,22 @@ With the **database tables** imported (see below), three more sections appear:
   recently quoted vehicles that have not been back — names, plates and values.
 - **Job cards opened and never billed** — a different leak: opened as invoices,
   never closed, so they carry no invoice number and appear in no sales figure.
+- **What you actually make** — margin costed from individual line items rather
+  than the invoice total. This is the only basis comparable across the whole
+  history (see below), and it is shown beside margin *excluding labour*, because
+  the internal labour charge rate changed and most of the apparent improvement is
+  that rather than trading.
+- **Money outstanding** — split in two, deliberately. The naive total reads as
+  accounts receivable but 96% of it sits on job cards that were never given an
+  invoice number, so nobody was ever asked to pay. The app never adds them.
 - **Due back, and not booked** — vehicles overdue against *their own* rhythm (the
   median gap between their past visits), so a fleet van on a six-week cycle and a
   family car on a yearly one are judged fairly. Needs three visits of history,
   and drops a vehicle after two years because by then it has left rather than
   being late. Same-day repeat invoices count as one visit, not a zero-day
-  interval.
+  interval. Ranked by what a call is *worth* — spend weighted by how often
+  vehicles that late actually return, measured by backtesting the list against
+  the following twelve months.
 - **Money sitting on the shelves** — stock at cost, what has not moved in 6 and
   12 months, what has never sold at all, what is over a year of cover, and what
   is sold out but still in demand. This is a snapshot: it is the one section
@@ -112,10 +122,14 @@ ignores them, so this one does not:
    a year earlier. With the 2023–2026 exports, a naive 2026-vs-2025 comparison
    reads **−31.7%**; the honest like-for-like reads **+11.1%**. A banner appears
    whenever the selected period is still open.
-2. **The cost-recording change.** Recorded cost jumps from about 31% of revenue
-   to about 53% in October 2023 — a bookkeeping change, not a margin collapse.
-   The app detects that step automatically and warns rather than drawing it as a
-   trend. Treat pre-2023 profit and GP% as overstated.
+2. **The cost-recording change.** The invoice *header* cost field jumps from
+   about 31% of revenue to about 53% in October 2023, which reads as a margin
+   collapse. It is not: that is when the field started being filled in properly.
+   Costing the same invoices from their **line items** shows no step at all
+   (56.2% → 55.6% → 58.3% across that boundary), and from 2024 on the two agree
+   within 1%. So with the `invoiceItem` table loaded the app computes the real
+   margin and says the collapse never happened; without it, it falls back to
+   warning about the step.
 3. **The three exports do not reconcile** (see below), so each chart states which
    one it is drawn from rather than silently mixing them.
 
