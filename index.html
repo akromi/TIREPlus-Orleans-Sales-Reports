@@ -171,6 +171,93 @@
   }
   #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
+  /* ---------- Dashboard ----------
+     Chart colors are the validated data-viz palette, not the brand red: red
+     stays reserved for "negative" so a bar never reads as an alarm.
+     Years use an ordinal one-hue ramp (older = lighter); categories use fixed
+     categorical slots keyed to the category NAME, so filtering never repaints. */
+  .dash {
+    --c-sel: #2a78d6;        /* selected period          (blue 450) */
+    --c-ctx: #b7d3f6;        /* context months           (blue 150) */
+    --c-ref: #52514e;        /* reference line / avg     (secondary ink) */
+    --grid: #e1e0d9;
+    --axis: #c3c2b7;
+    --muted-ink: #898781;
+    --up: #006300;
+    --down: #b42318;
+    print-color-adjust: exact; -webkit-print-color-adjust: exact;
+  }
+  .dash-head { margin: 0 0 4px; font-size: 21px; font-weight: 800; text-align: center; }
+  .dash-sub { text-align: center; font-size: 13px; color: var(--muted); margin: 0 0 18px; }
+
+  .notice {
+    border: 1px solid #e6d9a8; background: #fdf8e8; border-radius: 9px;
+    padding: 10px 13px; margin: 0 0 16px; font-size: 12.5px; line-height: 1.5;
+  }
+  .notice b { display: block; margin-bottom: 2px; }
+  .notice + .notice { margin-top: -8px; }
+
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); gap: 10px; margin-bottom: 8px; }
+  .kpi { border: 1px solid var(--border); border-radius: 10px; padding: 11px 13px 9px; }
+  .kpi .k { font-size: 10.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; }
+  .kpi .v { font-size: 23px; font-weight: 800; margin: 2px 0 1px; line-height: 1.1; }
+  .kpi .v.neg { color: var(--down); }
+  .kpi .deltas { display: flex; gap: 10px; flex-wrap: wrap; font-size: 11px; margin-top: 3px; }
+  .kpi .d { white-space: nowrap; color: var(--muted); }
+  .kpi .d b { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .kpi .d.up b { color: var(--up); }
+  .kpi .d.down b { color: var(--down); }
+  .kpi .spark { display: block; margin-top: 6px; }
+
+  .dash-sec { margin-top: 26px; }
+  .dash-sec > h3 {
+    font-size: 14px; font-weight: 800; margin: 0 0 1px;
+    border-top: 1px solid var(--border); padding-top: 14px;
+  }
+  .dash-sec > p.why { margin: 0 0 10px; font-size: 12px; color: var(--muted); }
+  .dash-sec.first > h3 { border-top: 0; padding-top: 0; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; margin: 0 0 8px; font-size: 11.5px; color: var(--ink); }
+  .legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .legend i { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
+  .legend i.line { height: 2px; border-radius: 1px; width: 15px; }
+
+  .chart { width: 100%; height: auto; display: block; overflow: visible; }
+  .chart text { font-family: inherit; }
+  .tick { font-size: 10px; fill: var(--muted-ink); }
+  .tick.b { font-weight: 700; fill: var(--muted); }
+  .vlabel { font-size: 10px; font-weight: 700; fill: var(--ink); }
+  .gridline { stroke: var(--grid); stroke-width: 1; }
+  .baseline { stroke: var(--axis); stroke-width: 1; }
+
+  .dash-split { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+  @media (max-width: 860px) { .dash-split { grid-template-columns: 1fr; } }
+
+  .ranked { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .ranked th {
+    text-align: left; font-size: 10.5px; font-weight: 700; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .5px;
+    border-bottom: 1px solid var(--border); padding: 0 6px 5px;
+  }
+  .ranked td { padding: 4px 6px; border-bottom: 1px solid #f1f2f4; vertical-align: middle; }
+  .ranked td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .ranked .bar { position: relative; }
+  .ranked .bar i {
+    display: block; height: 4px; border-radius: 2px; background: var(--c-sel); margin-top: 3px;
+  }
+  /* Fixed layout is what makes the ellipsis work: without it the name cell
+     sizes to its content and the truncation collapses the text entirely. */
+  .ranked.rank-tbl { table-layout: fixed; }
+  .ranked .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  details.tableview { margin-top: 10px; }
+  details.tableview > summary {
+    cursor: pointer; font-size: 11.5px; color: var(--muted); font-weight: 600;
+    list-style: revert; padding: 2px 0;
+  }
+  details.tableview > summary:hover { color: var(--ink); }
+  details.tableview .ranked { margin-top: 8px; }
+
   /* ---------- Print ---------- */
   @page { size: A4 portrait; margin: 12mm 9mm 12mm; }
   @media print {
@@ -193,6 +280,29 @@
     tbody.grp { page-break-inside: avoid; break-inside: avoid; }
     tr { page-break-inside: avoid; break-inside: avoid; }
     tbody.grp.big { page-break-inside: auto; break-inside: auto; }
+
+    /* Dashboard in print: keep each section whole on one page. */
+    .dash-head { font-size: 16px; }
+    .dash-sub { font-size: 10.5px; margin-bottom: 12px; }
+    .dash-sec { page-break-inside: avoid; break-inside: avoid; margin-top: 16px; }
+    .dash-sec > h3 { font-size: 11px; padding-top: 9px; }
+    .dash-sec > p.why { font-size: 9px; margin-bottom: 6px; }
+    .kpis { grid-template-columns: repeat(6, 1fr); gap: 5px; page-break-inside: avoid; break-inside: avoid; }
+    .kpi { padding: 6px 7px 5px; }
+    .kpi .k { font-size: 7px; letter-spacing: .3px; }
+    .kpi .v { font-size: 13px; }
+    .kpi .deltas { font-size: 7.5px; gap: 5px; }
+    .kpi .spark { display: none; }
+    .notice { font-size: 9px; padding: 7px 9px; page-break-inside: avoid; break-inside: avoid; }
+    .legend { font-size: 8.5px; gap: 9px; }
+    .tick { font-size: 7.5px; }
+    .vlabel { font-size: 7.5px; }
+    .ranked { font-size: 8.5px; }
+    .ranked th { font-size: 7.5px; }
+    .ranked td { padding: 2px 4px; }
+    .dash-split { gap: 12px; }
+    details.tableview > summary { display: none; }
+    details.tableview[open] { page-break-inside: avoid; break-inside: avoid; }
   }
 </style>
 </head>
@@ -211,6 +321,7 @@
 </header>
 
 <nav class="tabsbar no-print" id="tabsbar">
+  <button data-t="dashboard">📊 Dashboard</button>
   <button data-t="sales">Sales report<span class="cnt" id="cntSales"></span></button>
   <button data-t="breakup">Categories<span class="cnt" id="cntBreakup"></span></button>
   <button data-t="items">Items<span class="cnt" id="cntItems"></span></button>
@@ -326,6 +437,22 @@ function parseCsv(text) {
   return rows;
 }
 
+// A handful of rows come out of the point-of-sale system HTML-encoded
+// ("Tiger Paw Ice &amp; Snow"), so decode text fields as they are read.
+const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', '#39': "'" };
+function decodeEntities(s) {
+  if (s.indexOf('&') === -1) return s;
+  return s.replace(/&(#x?[0-9a-fA-F]+|[a-zA-Z]+);/g, (m, code) => {
+    if (Object.prototype.hasOwnProperty.call(ENTITIES, code)) return ENTITIES[code];
+    if (code[0] === '#') {
+      const n = code[1] === 'x' || code[1] === 'X'
+        ? parseInt(code.slice(2), 16) : parseInt(code.slice(1), 10);
+      if (isFinite(n) && n > 0 && n <= 0x10FFFF) return String.fromCodePoint(n);
+    }
+    return m;
+  });
+}
+
 function parseDateCell(s) {
   s = String(s || '').trim();
   let m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(s);       // MM/DD/YYYY
@@ -420,7 +547,7 @@ function extractInvoices(rows) {
     if (!/^\d+$/.test(ref)) continue;
     const dt = parseDateCell(r[cols.date]);
     if (!dt) continue;
-    const get = k => (cols[k] == null ? '' : String(r[cols[k]] || '').trim());
+    const get = k => (cols[k] == null ? '' : decodeEntities(String(r[cols[k]] || '').trim()));
     out.push({
       ref,
       y: dt.y, mo: dt.mo, d: dt.d,
@@ -455,7 +582,7 @@ function extractBreakup(rows) {
     const c0 = String(r[0] || '').trim();
     const dt = r.length >= 17 ? parseDateCell(r[4]) : null;
     if (/^\d+$/.test(c0) && dt) {
-      const t = i => String(r[i] || '').trim();
+      const t = i => decodeEntities(String(r[i] || '').trim());
       const row = {
         ref: c0,
         y: dt.y, mo: dt.mo, d: dt.d,
@@ -501,7 +628,7 @@ function extractItems(rows) {
     const dt = parseDateCell(r[0]);
     const ref = String(r[2] || '').trim();
     if (!dt || !/^\d+$/.test(ref)) continue;
-    const t = i => String(r[i] || '').trim();
+    const t = i => decodeEntities(String(r[i] || '').trim());
     const row = {
       ref,
       y: dt.y, mo: dt.mo, d: dt.d,
@@ -708,6 +835,378 @@ function fmtDateMdy(y, mo, d) {
 
 function daysInMonth(y, mo) { return new Date(y, mo, 0).getDate(); }
 
+/* =====================================================================
+   DASHBOARD ANALYTICS — aggregation over the parsed rows.
+   Every figure the dashboard shows comes from one of these.
+   ===================================================================== */
+const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+function monthKeyOf(y, mo) { return y * 100 + mo; }
+function mkYear(mk) { return Math.floor(mk / 100); }
+function mkMonth(mk) { return mk % 100; }
+function mkOfDateKey(dk) { return Math.floor(dk / 100); }
+function keyToDate(k) { return { y: Math.floor(k / 10000), mo: Math.floor(k / 100) % 100, d: k % 100 }; }
+
+function addMonths(mk, delta) {
+  const t = mkYear(mk) * 12 + (mkMonth(mk) - 1) + delta;
+  return monthKeyOf(Math.floor(t / 12), (t % 12 + 12) % 12 + 1);
+}
+
+function shiftDateYears(p, delta) {
+  const y = p.y + delta;
+  return { y, mo: p.mo, d: Math.min(p.d, daysInMonth(y, p.mo)) };
+}
+
+function shiftDateMonths(p, delta) {
+  const t = p.y * 12 + (p.mo - 1) + delta;
+  const y = Math.floor(t / 12), mo = (t % 12 + 12) % 12 + 1;
+  return { y, mo, d: Math.min(p.d, daysInMonth(y, mo)) };
+}
+
+function dayNum(y, mo, d) { return Math.round(Date.UTC(y, mo - 1, d) / 86400000); }
+function fromDayNum(n) {
+  const dt = new Date(n * 86400000);
+  return { y: dt.getUTCFullYear(), mo: dt.getUTCMonth() + 1, d: dt.getUTCDate() };
+}
+function dateKeyOfPoint(p) { return dateKeyOf(p.y, p.mo, p.d); }
+
+// The earliest and latest transaction actually on file.
+function coverageOf(rows) {
+  let min = null, max = null;
+  for (const r of rows) {
+    if (min === null || r.dateKey < min) min = r.dateKey;
+    if (max === null || r.dateKey > max) max = r.dateKey;
+  }
+  return min === null ? null : { minKey: min, maxKey: max };
+}
+
+// Months at the edges of the data that are not fully covered. Comparing these
+// to whole months is the single easiest way to read a false trend, so every
+// chart and comparison marks them.
+function partialMonthSet(coverage) {
+  const s = new Set();
+  if (!coverage) return s;
+  const minD = keyToDate(coverage.minKey), maxD = keyToDate(coverage.maxKey);
+  if (minD.d > 1) s.add(monthKeyOf(minD.y, minD.mo));
+  if (maxD.d < daysInMonth(maxD.y, maxD.mo)) s.add(monthKeyOf(maxD.y, maxD.mo));
+  return s;
+}
+
+function partialYearSet(coverage) {
+  const s = new Set();
+  if (!coverage) return s;
+  const minD = keyToDate(coverage.minKey), maxD = keyToDate(coverage.maxKey);
+  if (minD.mo > 1 || minD.d > 1) s.add(minD.y);
+  if (maxD.mo < 12 || maxD.d < 31) s.add(maxD.y);
+  return s;
+}
+
+function emptyAgg() {
+  return { n: 0, exHst: 0, hst: 0, dc: 0, total: 0, cost: 0, profit: 0, customers: 0, gp: 0, avgInvoice: 0 };
+}
+
+function finishAgg(t, custs) {
+  t.customers = custs ? custs.size : 0;
+  t.gp = gpPercent(t.exHst, t.dc, t.profit);
+  t.avgInvoice = t.n ? t.exHst / t.n : 0;
+  return t;
+}
+
+function aggregateRange(rows, fromKey, toKey) {
+  const t = emptyAgg(), custs = new Set();
+  for (const r of rows) {
+    if (fromKey != null && r.dateKey < fromKey) continue;
+    if (toKey != null && r.dateKey > toKey) continue;
+    t.n++; t.exHst += r.exHst; t.hst += r.hst; t.dc += r.dc;
+    t.total += r.total; t.cost += r.cost; t.profit += r.profit;
+    custs.add(r.customer.toLowerCase());
+  }
+  return finishAgg(t, custs);
+}
+
+// One dense bucket per calendar month across the whole span, so the trend chart
+// shows a gap month as a gap rather than silently closing it up.
+function monthlySeries(rows, coverage) {
+  const cov = coverage || coverageOf(rows);
+  if (!cov) return [];
+  const map = new Map();
+  for (const r of rows) {
+    const mk = mkOfDateKey(r.dateKey);
+    let b = map.get(mk);
+    if (!b) { b = { t: emptyAgg(), custs: new Set() }; map.set(mk, b); }
+    const t = b.t;
+    t.n++; t.exHst += r.exHst; t.hst += r.hst; t.dc += r.dc;
+    t.total += r.total; t.cost += r.cost; t.profit += r.profit;
+    b.custs.add(r.customer.toLowerCase());
+  }
+  const out = [];
+  const endMk = mkOfDateKey(cov.maxKey);
+  for (let mk = mkOfDateKey(cov.minKey); mk <= endMk; mk = addMonths(mk, 1)) {
+    const b = map.get(mk);
+    const t = b ? finishAgg(b.t, b.custs) : emptyAgg();
+    out.push(Object.assign({ mk, y: mkYear(mk), mo: mkMonth(mk) }, t));
+  }
+  return out;
+}
+
+function movingAverage(series, field, window) {
+  return series.map((_, i) => {
+    const from = Math.max(0, i - window + 1);
+    let sum = 0;
+    for (let j = from; j <= i; j++) sum += series[j][field];
+    return sum / (i - from + 1);
+  });
+}
+
+function pctChange(cur, prev) {
+  if (prev == null || Math.abs(prev) < 1e-9) return null;
+  return (cur - prev) / Math.abs(prev) * 100;
+}
+
+// The comparison engine. The selected range is CLAMPED to the data actually on
+// file, and the comparison windows are the same shape shifted back — so a
+// three-day-old month is compared against the same three days a year ago,
+// never against a whole month.
+function periodComparison(rows, range, period, coverage) {
+  const cov = coverage || coverageOf(rows);
+  if (!cov) return null;
+  const fromKey = dateKeyOfPoint(range.from);
+  const rawToKey = dateKeyOfPoint(range.to);
+  const toKey = Math.min(rawToKey, cov.maxKey);
+  if (toKey < fromKey) {
+    return { current: emptyAgg(), prev: null, lastYear: null, truncated: false, empty: true,
+             from: range.from, to: range.to, prevLabel: '', lastYearLabel: '' };
+  }
+  const to = keyToDate(toKey);
+  const truncated = rawToKey > cov.maxKey && dateKeyOfPoint(range.from) <= cov.maxKey && period !== 'all';
+
+  const spanDays = dayNum(to.y, to.mo, to.d) - dayNum(range.from.y, range.from.mo, range.from.d);
+  let prevFrom, prevTo, prevLabel;
+  if (period === 'month') {
+    prevFrom = shiftDateMonths(range.from, -1);
+    prevTo = shiftDateMonths(to, -1);
+    prevLabel = MONTH_ABBR[prevFrom.mo - 1] + ' ' + prevFrom.y;
+  } else if (period === 'year') {
+    prevFrom = shiftDateYears(range.from, -1);
+    prevTo = shiftDateYears(to, -1);
+    prevLabel = String(prevFrom.y);
+  } else {
+    const endDay = dayNum(range.from.y, range.from.mo, range.from.d) - 1;
+    prevTo = fromDayNum(endDay);
+    prevFrom = fromDayNum(endDay - spanDays);
+    prevLabel = 'previous ' + (spanDays + 1) + ' days';
+  }
+  const lyFrom = shiftDateYears(range.from, -1), lyTo = shiftDateYears(to, -1);
+
+  const inCov = (a, b) => dateKeyOfPoint(b) >= cov.minKey && dateKeyOfPoint(a) <= cov.maxKey;
+  return {
+    from: range.from, to, truncated, empty: false,
+    current: aggregateRange(rows, fromKey, toKey),
+    prev: inCov(prevFrom, prevTo) ? aggregateRange(rows, dateKeyOfPoint(prevFrom), dateKeyOfPoint(prevTo)) : null,
+    lastYear: inCov(lyFrom, lyTo) ? aggregateRange(rows, dateKeyOfPoint(lyFrom), dateKeyOfPoint(lyTo)) : null,
+    prevLabel,
+    lastYearLabel: period === 'month' ? MONTH_ABBR[lyFrom.mo - 1] + ' ' + lyFrom.y : String(lyFrom.y),
+  };
+}
+
+// Calendar-month grid, one row per year — the shape behind the year-over-year
+// chart. Months with no data at all stay null so a line does not dive to zero.
+function yearMonthGrid(series, field) {
+  const years = [...new Set(series.map(s => s.y))].sort((a, b) => a - b);
+  const byYear = new Map(years.map(y => [y, Array(12).fill(null)]));
+  for (const s of series) {
+    if (s.n === 0) continue;
+    byYear.get(s.y)[s.mo - 1] = field ? s[field] : s;
+  }
+  return { years, byYear };
+}
+
+// Seasonal shape, normalized so growth between years does not masquerade as
+// seasonality: each month is indexed against its own year's average month,
+// then averaged across years. 100 = an average month. Partial months excluded.
+function seasonalityIndex(series, partialSet, field) {
+  const f = field || 'exHst';
+  const byYear = new Map();
+  for (const s of series) {
+    if (s.n === 0 || (partialSet && partialSet.has(s.mk))) continue;
+    if (!byYear.has(s.y)) byYear.set(s.y, []);
+    byYear.get(s.y).push(s);
+  }
+  const acc = Array.from({ length: 12 }, () => []);
+  for (const arr of byYear.values()) {
+    if (arr.length < 2) continue;
+    const avg = arr.reduce((a, b) => a + b[f], 0) / arr.length;
+    if (Math.abs(avg) < 1e-9) continue;
+    for (const s of arr) acc[s.mo - 1].push(s[f] / avg * 100);
+  }
+  return acc.map((vals, i) => ({
+    mo: i + 1,
+    index: vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null,
+    years: vals.length,
+  }));
+}
+
+// Cost was under-recorded before the shop started capturing parts cost, which
+// would otherwise read as a margin collapse. Detect the step rather than
+// hard-coding a date: find the month where the trailing cost ratio jumps and
+// stays up. Returns null when the history looks consistent.
+function marginBreakDetect(series) {
+  const pts = series.filter(s => s.exHst > 1000 && s.n >= 20);
+  if (pts.length < 8) return null;
+  const ratio = s => s.cost / s.exHst;
+  let best = null;
+  for (let i = 3; i <= pts.length - 3; i++) {
+    const before = pts.slice(0, i), after = pts.slice(i);
+    const mb = before.reduce((a, s) => a + ratio(s), 0) / before.length;
+    const ma = after.reduce((a, s) => a + ratio(s), 0) / after.length;
+    const jump = ma - mb;
+    if (jump > 0.15 && (!best || jump > best.jump)) {
+      best = { jump, mk: pts[i].mk, beforeRatio: mb, afterRatio: ma, beforeCount: before.length };
+    }
+  }
+  if (!best) return null;
+  // Only report a genuine step: the earlier stretch must be consistently lower.
+  const beforeMax = Math.max(...pts.slice(0, best.beforeCount).map(ratio));
+  const afterMin = Math.min(...pts.slice(best.beforeCount).map(ratio));
+  return beforeMax < afterMin + 0.08 ? best : null;
+}
+
+function categoryTotalsInRange(breakupRows, fromKey, toKey) {
+  const map = new Map();
+  for (const r of breakupRows) {
+    if (fromKey != null && r.dateKey < fromKey) continue;
+    if (toKey != null && r.dateKey > toKey) continue;
+    let c = map.get(r.category);
+    if (!c) { c = { name: r.category, n: 0, amount: 0, cost: 0, hst: 0, profit: 0 }; map.set(r.category, c); }
+    c.n++; c.amount += r.amount; c.cost += r.cost; c.hst += r.hst; c.profit += r.profit;
+  }
+  const cats = [...map.values()];
+  for (const c of cats) c.gp = c.amount ? c.profit / c.amount * 100 : 0;
+  cats.sort((a, b) => b.amount - a.amount);
+  const total = cats.reduce((a, c) => a + c.amount, 0);
+  for (const c of cats) c.share = total ? c.amount / total * 100 : 0;
+  return { cats, total, profit: cats.reduce((a, c) => a + c.profit, 0) };
+}
+
+// Category mix per year — the shape behind the stacked mix chart.
+function categoryMixByYear(breakupRows) {
+  const byYear = new Map();
+  for (const r of breakupRows) {
+    const y = Math.floor(r.dateKey / 10000);
+    if (!byYear.has(y)) byYear.set(y, new Map());
+    const m = byYear.get(y);
+    let c = m.get(r.category);
+    if (!c) { c = { name: r.category, amount: 0, profit: 0, n: 0 }; m.set(r.category, c); }
+    c.amount += r.amount; c.profit += r.profit; c.n++;
+  }
+  const years = [...byYear.keys()].sort((a, b) => a - b);
+  const names = [...new Set(breakupRows.map(r => r.category))];
+  return years.map(y => {
+    const m = byYear.get(y);
+    const total = [...m.values()].reduce((a, c) => a + c.amount, 0);
+    return {
+      y, total,
+      cats: names.map(name => {
+        const c = m.get(name) || { name, amount: 0, profit: 0, n: 0 };
+        return { name, amount: c.amount, profit: c.profit, n: c.n, share: total ? c.amount / total * 100 : 0 };
+      }),
+    };
+  });
+}
+
+function topCustomersInRange(rows, fromKey, toKey, limit) {
+  const map = new Map();
+  for (const r of rows) {
+    if (fromKey != null && r.dateKey < fromKey) continue;
+    if (toKey != null && r.dateKey > toKey) continue;
+    const k = r.customer.toLowerCase();
+    let c = map.get(k);
+    if (!c) { c = { name: r.customer, n: 0, exHst: 0, dc: 0, profit: 0 }; map.set(k, c); }
+    c.n++; c.exHst += r.exHst; c.dc += r.dc; c.profit += r.profit;
+  }
+  const out = [...map.values()];
+  for (const c of out) c.gp = gpPercent(c.exHst, c.dc, c.profit);
+  out.sort((a, b) => b.exHst - a.exHst);
+  return { rows: out.slice(0, limit || 10), customerCount: out.length };
+}
+
+function topItemsInRange(itemRows, fromKey, toKey, limit) {
+  const map = new Map();
+  for (const r of itemRows) {
+    if (fromKey != null && r.dateKey < fromKey) continue;
+    if (toKey != null && r.dateKey > toKey) continue;
+    let it = map.get(r.code);
+    if (!it) { it = { code: r.code, desc: r.desc, n: 0, qty: 0, sell: 0, cost: 0 }; map.set(r.code, it); }
+    it.n++; it.qty += r.qty; it.sell += r.sell; it.cost += r.cost;
+    if (!it.desc && r.desc) it.desc = r.desc;
+  }
+  const out = [...map.values()];
+  for (const it of out) {
+    it.profit = it.sell - it.cost;
+    it.margin = it.sell ? it.profit / it.sell * 100 : 0;
+  }
+  out.sort((a, b) => b.sell - a.sell);
+  return { rows: out.slice(0, limit || 10), itemCount: out.length };
+}
+
+// Vehicle mix, from the Make/Model and licence-plate columns of the breakup
+// export. Plates identify vehicles; the make is the first word of Make/Model.
+function vehicleStats(breakupRows, fromKey, toKey, limit) {
+  const makes = new Map(), plates = new Map();
+  for (const r of breakupRows) {
+    if (fromKey != null && r.dateKey < fromKey) continue;
+    if (toKey != null && r.dateKey > toKey) continue;
+    const plate = r.license.trim().toUpperCase();
+    const make = (r.vehicle || '').trim().split(/\s+/)[0].toUpperCase();
+    if (make) {
+      let m = makes.get(make);
+      if (!m) { m = { make, amount: 0, profit: 0, lines: 0, plates: new Set(), refs: new Set() }; makes.set(make, m); }
+      m.amount += r.amount; m.profit += r.profit; m.lines++;
+      if (plate) m.plates.add(plate);
+      m.refs.add(r.ref);
+    }
+    if (plate) {
+      let p = plates.get(plate);
+      if (!p) { p = { plate, refs: new Set(), amount: 0 }; plates.set(plate, p); }
+      p.refs.add(r.ref); p.amount += r.amount;
+    }
+  }
+  const list = [...makes.values()].map(m => ({
+    make: m.make, amount: m.amount, profit: m.profit, lines: m.lines,
+    vehicles: m.plates.size, visits: m.refs.size,
+  })).sort((a, b) => b.amount - a.amount);
+  const visitCounts = [...plates.values()].map(p => p.refs.size);
+  const repeat = visitCounts.filter(v => v > 1).length;
+  return {
+    makes: list.slice(0, limit || 10),
+    makeCount: list.length,
+    totalAmount: list.reduce((a, m) => a + m.amount, 0),
+    vehicles: plates.size,
+    repeatVehicles: repeat,
+    avgVisits: plates.size ? visitCounts.reduce((a, b) => a + b, 0) / plates.size : 0,
+  };
+}
+
+// Customers whose first-ever invoice falls inside the window, vs those who had
+// been seen before it. Needs the full history, not just the window.
+function newVsReturning(rows, fromKey, toKey) {
+  const firstSeen = new Map();
+  for (const r of rows) {
+    const k = r.customer.toLowerCase();
+    const prev = firstSeen.get(k);
+    if (prev === undefined || r.dateKey < prev) firstSeen.set(k, r.dateKey);
+  }
+  const inWindow = new Set();
+  for (const r of rows) {
+    if (fromKey != null && r.dateKey < fromKey) continue;
+    if (toKey != null && r.dateKey > toKey) continue;
+    inWindow.add(r.customer.toLowerCase());
+  }
+  let fresh = 0;
+  for (const k of inWindow) if (firstSeen.get(k) >= fromKey) fresh++;
+  return { total: inWindow.size, fresh, returning: inWindow.size - fresh };
+}
+
 /* ===================== END CORE LOGIC ===================== */
 
 /* =====================================================================
@@ -715,7 +1214,7 @@ function daysInMonth(y, mo) { return new Date(y, mo, 0).getDate(); }
    ===================================================================== */
 const DB_NAME = 'tireplus-sales';
 const LEGACY_KEY = 'tireplusSales.data.v1';
-const FILTER_KEY = 'tireplusSales.filters.v2';
+const FILTER_KEY = 'tireplusSales.filters.v3';
 const DATASETS = ['sales', 'breakup', 'items'];
 const DATASET_LABEL = { sales: 'Sales report', breakup: 'Sales breakup', items: 'Item sales' };
 
@@ -829,7 +1328,7 @@ const MONTH_NAMES = ['January','February','March','April','May','June','July','A
 const BREAKUP_DETAIL_CAP = 8000;
 
 let state = {
-  tab: 'sales',
+  tab: 'dashboard',
   period: 'month', y: null, mo: null, from: '', to: '',
   search: '', type: '', view: 'customer',
   category: '', itemSort: 'sell', totalsOnly: false,
@@ -840,7 +1339,7 @@ function loadFilters() {
     const raw = localStorage.getItem(FILTER_KEY);
     if (raw) state = Object.assign(state, JSON.parse(raw));
   } catch (e) { /* ignore */ }
-  if (!DATASETS.includes(state.tab)) state.tab = 'sales';
+  if (!TABS.includes(state.tab)) state.tab = 'dashboard';
 }
 function saveFilters() {
   try { localStorage.setItem(FILTER_KEY, JSON.stringify(state)); } catch (e) { /* ignore */ }
@@ -866,8 +1365,11 @@ function ensureValidState() {
   const iso = r => `${r.y}-${String(r.mo).padStart(2,'0')}-${String(r.d).padStart(2,'0')}`;
   if (!state.from) state.from = iso(span.min);
   if (!state.to) state.to = iso(span.max);
-  if (rowsOf(state.tab).length === 0) {
-    const first = DATASETS.find(n => rowsOf(n).length);
+  // "All data" has no meaning on the dashboard — it always draws the whole
+  // history behind whatever period is selected.
+  if (state.tab === 'dashboard' && state.period === 'all') state.period = 'month';
+  if (rowsOf(TAB_NEEDS[state.tab] || state.tab).length === 0) {
+    const first = TABS.find(t => rowsOf(TAB_NEEDS[t]).length);
     if (first) state.tab = first;
   }
 }
@@ -900,7 +1402,10 @@ function rangeLabel() {
   return fmtDateMdy(r.from.y, r.from.mo, r.from.d) + ' – ' + fmtDateMdy(r.to.y, r.to.mo, r.to.d);
 }
 
-const TAB_TITLE = { sales: 'Sales Report', breakup: 'Sales Breakup Report', items: 'Item Sales Report' };
+const TAB_TITLE = { dashboard: 'Sales Dashboard', sales: 'Sales Report', breakup: 'Sales Breakup Report', items: 'Item Sales Report' };
+const TABS = ['dashboard', 'sales', 'breakup', 'items'];
+// Which dataset a tab needs before it can show anything.
+const TAB_NEEDS = { dashboard: 'sales', sales: 'sales', breakup: 'breakup', items: 'items' };
 
 function currentFilters() {
   const r = effectiveRange();
@@ -1113,6 +1618,520 @@ function renderItemsTab() {
   ]);
 }
 
+/* =====================================================================
+   Dashboard rendering — every chart is hand-rolled inline SVG so the file
+   stays dependency-free and prints as vector.
+   ===================================================================== */
+const YEAR_RAMP = ['#86b6ef', '#5598e7', '#2a78d6', '#184f95'];  // ordinal: older = lighter
+const CAT_COLORS = {
+  'LABOUR': '#2a78d6', 'STOCK': '#eb6834', 'TIRES': '#1baf7a',
+  'CONSUMABLES': '#eda100', 'SUBLET REPAIR': '#e87ba4',
+};
+const CAT_FALLBACK = ['#4a3aa7', '#008300', '#e34948'];
+
+// Colour follows the category NAME, never its rank, so filtering one out never
+// repaints the others.
+function catColor(name, i) { return CAT_COLORS[name] || CAT_FALLBACK[i % CAT_FALLBACK.length]; }
+function yearColor(y, years) {
+  const i = years.indexOf(y), n = years.length;
+  if (n <= YEAR_RAMP.length) return YEAR_RAMP[YEAR_RAMP.length - n + i];
+  return YEAR_RAMP[Math.round(i / (n - 1) * (YEAR_RAMP.length - 1))];
+}
+function inkOn(hex) {
+  const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+  return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > 0.6 ? '#0b0b0b' : '#ffffff';
+}
+
+function f1(n) { return Math.round(n * 10) / 10; }
+function niceStep(raw) {
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const n = raw / mag;
+  return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * mag;
+}
+function axisTicks(max, count) {
+  if (!(max > 0)) return { max: 1, ticks: [0, 1] };
+  const step = niceStep(max / (count || 4));
+  const top = Math.ceil(max / step) * step;
+  const ticks = [];
+  for (let v = 0; v <= top + step * 1e-6; v += step) ticks.push(v);
+  return { max: top, ticks };
+}
+function compactMoney(v) {
+  const a = Math.abs(v), s = v < 0 ? '-' : '';
+  if (a >= 1e6) return s + '$' + (a / 1e6).toFixed(a >= 1e7 ? 0 : 1) + 'M';
+  if (a >= 1e3) return s + '$' + Math.round(a / 1e3) + 'K';
+  return s + '$' + Math.round(a);
+}
+// Rounded data-end, square at the baseline.
+function barPath(x, y, w, h, r) {
+  const rr = Math.max(0, Math.min(r, w / 2, h));
+  return 'M' + f1(x) + ',' + f1(y + h) + 'L' + f1(x) + ',' + f1(y + rr) +
+    'Q' + f1(x) + ',' + f1(y) + ' ' + f1(x + rr) + ',' + f1(y) +
+    'L' + f1(x + w - rr) + ',' + f1(y) + 'Q' + f1(x + w) + ',' + f1(y) + ' ' + f1(x + w) + ',' + f1(y + rr) +
+    'L' + f1(x + w) + ',' + f1(y + h) + 'Z';
+}
+
+function sparkColumns(vals, curIdx) {
+  const W = 150, H = 26, n = vals.length || 1;
+  const max = Math.max(1, ...vals.map(v => Math.abs(v)));
+  const band = W / n, bw = Math.max(1.5, band - 1.6);
+  let out = '<svg class="spark" viewBox="0 0 ' + W + ' ' + H + '" height="26" preserveAspectRatio="none" aria-hidden="true">';
+  vals.forEach((v, i) => {
+    const h = Math.max(1, Math.abs(v) / max * (H - 2));
+    out += '<rect x="' + f1(i * band) + '" y="' + f1(H - h) + '" width="' + f1(bw) + '" height="' + f1(h) +
+      '" rx="1" fill="' + (i === curIdx ? 'var(--c-sel)' : 'var(--c-ctx)') + '"/>';
+  });
+  return out + '</svg>';
+}
+
+// Percentage deltas. GP% is compared in percentage POINTS — a margin moving
+// 46% -> 48% is "+2.0 pts", not "+4.3%".
+function deltaHtml(cur, prev, label, mode) {
+  if (prev == null) return '<span class="d">vs ' + esc(label) + ': —</span>';
+  if (mode === 'pts') {
+    const d = cur - prev;
+    if (!isFinite(d)) return '<span class="d">vs ' + esc(label) + ': —</span>';
+    const up = d >= 0.005;
+    const flat = Math.abs(d) < 0.05;
+    return '<span class="d ' + (flat ? '' : up ? 'up' : 'down') + '">vs ' + esc(label) + ': <b>' +
+      (flat ? '±0.0' : (up ? '▲' : '▼') + Math.abs(d).toFixed(1)) + ' pts</b></span>';
+  }
+  const p = pctChange(cur, prev);
+  if (p == null) return '<span class="d">vs ' + esc(label) + ': —</span>';
+  const flat = Math.abs(p) < 0.05;
+  return '<span class="d ' + (flat ? '' : p >= 0 ? 'up' : 'down') + '">vs ' + esc(label) + ': <b>' +
+    (flat ? '±0.0%' : (p >= 0 ? '▲' : '▼') + Math.abs(p).toFixed(1) + '%') + '</b></span>';
+}
+
+/* ----- chart 1: the long monthly trend, with the selected period emphasised ----- */
+function trendChart(series, field, selFrom, selTo, partialSet, moneyFmt) {
+  if (!series.length) return '';
+  const W = 980, H = 236, padL = 54, padR = 10, padT = 10, padB = 30;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const vals = series.map(s => s[field]);
+  const ax = axisTicks(Math.max(0, ...vals), 4);
+  const band = plotW / series.length;
+  const bw = Math.min(24, Math.max(2, band - 3));
+  const yOf = v => padT + plotH - (Math.max(0, v) / ax.max) * plotH;
+  const ma = movingAverage(series, field, 3);
+
+  let g = '';
+  for (const t of ax.ticks) {
+    const y = yOf(t);
+    g += '<line class="gridline" x1="' + padL + '" y1="' + f1(y) + '" x2="' + (W - padR) + '" y2="' + f1(y) + '"/>' +
+      '<text class="tick" x="' + (padL - 7) + '" y="' + f1(y + 3.5) + '" text-anchor="end">' + (moneyFmt ? compactMoney(t) : Math.round(t)) + '</text>';
+  }
+  let bars = '', labels = '';
+  series.forEach((s, i) => {
+    const x = padL + i * band + (band - bw) / 2;
+    const v = s[field];
+    const h = Math.max(v > 0 ? 1.5 : 0, padT + plotH - yOf(v));
+    const sel = s.mk >= selFrom && s.mk <= selTo;
+    const isPartial = partialSet.has(s.mk);
+    if (v > 0) {
+      bars += '<path d="' + barPath(x, yOf(v), bw, h, 2.5) + '" fill="' + (sel ? 'var(--c-sel)' : 'var(--c-ctx)') + '"' +
+        (isPartial ? ' opacity="0.45"' : '') + '><title>' + esc(MONTH_ABBR[s.mo - 1] + ' ' + s.y) + ': ' +
+        (moneyFmt ? fmtMoney(v) : v) + (isPartial ? ' (partial month)' : '') + '</title></path>';
+    }
+    if (s.mo === 1 || i === 0) {
+      labels += '<text class="tick b" x="' + f1(padL + i * band + band / 2) + '" y="' + (H - 10) + '" text-anchor="middle">' + s.y + '</text>';
+    } else if (s.mo === 7) {
+      labels += '<text class="tick" x="' + f1(padL + i * band + band / 2) + '" y="' + (H - 10) + '" text-anchor="middle">Jul</text>';
+    }
+  });
+  let line = '';
+  if (series.length > 3) {
+    const pts = ma.map((v, i) => f1(padL + i * band + band / 2) + ',' + f1(yOf(v))).join(' ');
+    line = '<polyline points="' + pts + '" fill="none" stroke="var(--c-ref)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" opacity="0.85"/>';
+  }
+  return '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" role="img">' + g + bars + line +
+    '<line class="baseline" x1="' + padL + '" y1="' + f1(padT + plotH) + '" x2="' + (W - padR) + '" y2="' + f1(padT + plotH) + '"/>' +
+    labels + '</svg>';
+}
+
+/* ----- chart 2: same calendar month across years, grouped columns ----- */
+function yoyChart(grid, moneyFmt) {
+  const years = grid.years;
+  if (!years.length) return '';
+  const W = 980, H = 250, padL = 54, padR = 10, padT = 10, padB = 30;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  let max = 0;
+  for (const y of years) for (const v of grid.byYear.get(y)) if (v != null && v > max) max = v;
+  const ax = axisTicks(max, 4);
+  const gband = plotW / 12;
+  const bw = Math.min(18, Math.max(2, (gband - 12) / years.length - 1.6));
+  const yOf = v => padT + plotH - (Math.max(0, v) / ax.max) * plotH;
+
+  let g = '';
+  for (const t of ax.ticks) {
+    const y = yOf(t);
+    g += '<line class="gridline" x1="' + padL + '" y1="' + f1(y) + '" x2="' + (W - padR) + '" y2="' + f1(y) + '"/>' +
+      '<text class="tick" x="' + (padL - 7) + '" y="' + f1(y + 3.5) + '" text-anchor="end">' + (moneyFmt ? compactMoney(t) : Math.round(t)) + '</text>';
+  }
+  let bars = '', labels = '';
+  for (let m = 0; m < 12; m++) {
+    const groupW = years.length * bw + (years.length - 1) * 1.6;
+    const x0 = padL + m * gband + (gband - groupW) / 2;
+    years.forEach((yr, k) => {
+      const v = grid.byYear.get(yr)[m];
+      if (v == null) return;
+      const x = x0 + k * (bw + 1.6);
+      const h = Math.max(1.5, padT + plotH - yOf(v));
+      bars += '<path d="' + barPath(x, yOf(v), bw, h, 2) + '" fill="' + yearColor(yr, years) + '">' +
+        '<title>' + MONTH_ABBR[m] + ' ' + yr + ': ' + (moneyFmt ? fmtMoney(v) : v) + '</title></path>';
+    });
+    labels += '<text class="tick" x="' + f1(padL + m * gband + gband / 2) + '" y="' + (H - 10) + '" text-anchor="middle">' + MONTH_ABBR[m] + '</text>';
+  }
+  return '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" role="img">' + g + bars +
+    '<line class="baseline" x1="' + padL + '" y1="' + f1(padT + plotH) + '" x2="' + (W - padR) + '" y2="' + f1(padT + plotH) + '"/>' +
+    labels + '</svg>';
+}
+
+/* ----- chart 3: seasonal shape, indexed so growth is not mistaken for season ----- */
+function seasonChart(seas) {
+  const W = 980, H = 190, padL = 54, padR = 10, padT = 10, padB = 30;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const max = Math.max(120, ...seas.map(s => s.index || 0));
+  const ax = axisTicks(max, 4);
+  const band = plotW / 12, bw = Math.min(34, band - 10);
+  const yOf = v => padT + plotH - (Math.max(0, v) / ax.max) * plotH;
+  let g = '';
+  for (const t of ax.ticks) {
+    const y = yOf(t);
+    g += '<line class="gridline" x1="' + padL + '" y1="' + f1(y) + '" x2="' + (W - padR) + '" y2="' + f1(y) + '"/>' +
+      '<text class="tick" x="' + (padL - 7) + '" y="' + f1(y + 3.5) + '" text-anchor="end">' + Math.round(t) + '</text>';
+  }
+  let bars = '', labels = '';
+  seas.forEach((s, i) => {
+    const x = padL + i * band + (band - bw) / 2;
+    labels += '<text class="tick" x="' + f1(padL + i * band + band / 2) + '" y="' + (H - 10) + '" text-anchor="middle">' + MONTH_ABBR[i] + '</text>';
+    if (s.index == null) return;
+    const h = Math.max(1.5, padT + plotH - yOf(s.index));
+    bars += '<path d="' + barPath(x, yOf(s.index), bw, h, 2.5) + '" fill="var(--c-sel)"><title>' +
+      MONTH_ABBR[i] + ': ' + s.index.toFixed(0) + ' (100 = an average month, from ' + s.years + ' year' + (s.years === 1 ? '' : 's') + ')</title></path>' +
+      '<text class="vlabel" x="' + f1(padL + i * band + band / 2) + '" y="' + f1(yOf(s.index) - 5) + '" text-anchor="middle">' + s.index.toFixed(0) + '</text>';
+  });
+  const y100 = yOf(100);
+  return '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" role="img">' + g + bars +
+    '<line x1="' + padL + '" y1="' + f1(y100) + '" x2="' + (W - padR) + '" y2="' + f1(y100) + '" stroke="var(--c-ref)" stroke-width="2"/>' +
+    '<text class="tick b" x="' + (padL + 5) + '" y="' + f1(y100 - 5) + '">average month = 100</text>' +
+    '<line class="baseline" x1="' + padL + '" y1="' + f1(padT + plotH) + '" x2="' + (W - padR) + '" y2="' + f1(padT + plotH) + '"/>' +
+    labels + '</svg>';
+}
+
+function legendHtml(entries) {
+  return '<div class="legend">' + entries.map(e =>
+    '<span><i class="' + (e.line ? 'line' : '') + '" style="background:' + e.color + '"></i>' + esc(e.label) + '</span>').join('') + '</div>';
+}
+
+// A ranked table: rank, name with an inline magnitude bar, then numeric columns.
+// `cols` are {label, width, cell} so the header and body stay in lockstep — the
+// fixed layout needs the widths declared once, on the header row.
+function rankedTable(caption, rows, valueOf, labelOf, subOf, cols) {
+  if (!rows.length) return '<table class="ranked"><thead><tr><th>' + esc(caption) +
+    '</th></tr></thead><tbody><tr><td style="color:var(--muted)">Nothing in this period.</td></tr></tbody></table>';
+  const max = Math.max(1, ...rows.map(valueOf));
+  const head = '<thead><tr><th style="width:24px"></th><th>' + esc(caption) + '</th>' +
+    cols.map(c => '<th class="num" style="width:' + c.width + '">' + esc(c.label) + '</th>').join('') +
+    '</tr></thead>';
+  const body = rows.map((r, i) => '<tr>' +
+    '<td class="num" style="color:var(--muted)">' + (i + 1) + '</td>' +
+    '<td class="bar"><div class="nm" title="' + esc(labelOf(r)) + '">' + esc(labelOf(r)) + '</div>' +
+      (subOf ? '<div class="nm" style="font-size:10.5px;color:var(--muted)">' + esc(subOf(r)) + '</div>' : '') +
+      '<i style="width:' + f1(valueOf(r) / max * 100) + '%"></i></td>' +
+    cols.map(c => '<td class="num">' + c.cell(r) + '</td>').join('') + '</tr>').join('');
+  return '<table class="ranked rank-tbl">' + head + '<tbody>' + body + '</tbody></table>';
+}
+
+function applyNonDateFilters(rows, f, kind) {
+  const q = (f.search || '').trim().toLowerCase();
+  if (!q && !f.type) return rows;
+  return rows.filter(r => {
+    if (f.type && kind !== 'items' && r.type !== f.type) return false;
+    if (!q) return true;
+    if (kind === 'items') return (r.code + ' ' + r.desc + ' ' + r.supplier + ' ' + r.ref).toLowerCase().includes(q);
+    if (kind === 'breakup') return (r.customer + ' ' + r.ref + ' ' + r.license + ' ' + r.code + ' ' + r.desc + ' ' + r.vehicle).toLowerCase().includes(q);
+    return (r.customer + ' ' + r.ref + ' ' + r.license).toLowerCase().includes(q);
+  });
+}
+
+function renderDashboardTab() {
+  const f = currentFilters();
+  const sales = applyNonDateFilters(rowsOf('sales'), f, 'sales');
+  const brk = applyNonDateFilters(rowsOf('breakup'), f, 'breakup');
+  const items = applyNonDateFilters(rowsOf('items'), f, 'items');
+  const range = effectiveRange();
+  const today = new Date();
+  const printedStr = fmtDateMdy(today.getFullYear(), today.getMonth() + 1, today.getDate());
+  const scopeBits = [];
+  if (state.type) scopeBits.push(esc(state.type) + 's only');
+  if (state.search) scopeBits.push('matching “' + esc(state.search) + '”');
+
+  if (!sales.length) {
+    $('sheet').innerHTML = '<div class="dash"><h1 class="dash-head">Sales Dashboard</h1>' +
+      '<p class="dash-sub">' + rangeLabel() + '</p>' +
+      '<div class="notice"><b>No transactions to analyse.</b>' +
+      (rowsOf('sales').length
+        ? 'Nothing matches the current search or type filter. Clear them to see the full picture.'
+        : 'The dashboard is driven by the <strong>Sales Report</strong> export — import it to see trends and comparisons.') +
+      '</div></div>';
+    renderCards([]);
+    return;
+  }
+
+  const cov = coverageOf(sales);
+  const series = monthlySeries(sales, cov);
+  const partial = partialMonthSet(cov);
+  const partialYears = partialYearSet(cov);
+  const cmp = periodComparison(sales, range, state.period, cov);
+  const cur = cmp.current;
+  const selFromMk = mkOfDateKey(dateKeyOfPoint(range.from));
+  const selToMk = mkOfDateKey(dateKeyOfPoint(range.to));
+
+  /* --- notices: the things that would otherwise produce a false reading --- */
+  let notices = '';
+  if (cmp.truncated) {
+    const t = cmp.to;
+    notices += '<div class="notice"><b>This period is still incomplete.</b>' +
+      'Data runs to ' + fmtDateMdy(t.y, t.mo, t.d) + ', so every comparison below measures the same ' +
+      'part-period a year earlier (and the equivalent earlier window) rather than a whole one. ' +
+      'Comparing it against a full month or year would understate it badly.</div>';
+  }
+  const brkPoint = marginBreakDetect(series);
+  if (brkPoint) {
+    notices += '<div class="notice"><b>Cost data changes in ' + MONTH_ABBR[mkMonth(brkPoint.mk) - 1] + ' ' + mkYear(brkPoint.mk) + '.</b>' +
+      'Before then, recorded cost averages ' + (brkPoint.beforeRatio * 100).toFixed(0) + '% of revenue; after, ' +
+      (brkPoint.afterRatio * 100).toFixed(0) + '%. That is a bookkeeping change, not a collapse in margin — ' +
+      'treat profit and GP% before ' + mkYear(brkPoint.mk) + ' as overstated, and compare margins only within the later period.</div>';
+  }
+
+  /* --- KPI row --- */
+  const idxOfSel = series.findIndex(s => s.mk === selToMk);
+  const sparkEnd = idxOfSel >= 0 ? idxOfSel : series.length - 1;
+  const sparkFrom = Math.max(0, sparkEnd - 11);
+  const sparkSlice = series.slice(sparkFrom, sparkEnd + 1);
+  const sparkCur = sparkSlice.length - 1;
+  const spark = fld => sparkColumns(sparkSlice.map(s => s[fld]), sparkCur);
+  const P = cmp.prev, L = cmp.lastYear;
+  const kpi = (k, v, neg, dA, dB, sp) =>
+    '<div class="kpi"><div class="k">' + k + '</div><div class="v' + (neg ? ' neg' : '') + '">' + v + '</div>' +
+    '<div class="deltas">' + dA + dB + '</div>' + (sp || '') + '</div>';
+  const kpis = '<div class="kpis">' +
+    kpi('Revenue (Ex HST)', locMoney(cur.exHst), cur.exHst < 0,
+      deltaHtml(cur.exHst, P && P.exHst, cmp.prevLabel), deltaHtml(cur.exHst, L && L.exHst, cmp.lastYearLabel), spark('exHst')) +
+    kpi('Profit', locMoney(cur.profit), cur.profit < 0,
+      deltaHtml(cur.profit, P && P.profit, cmp.prevLabel), deltaHtml(cur.profit, L && L.profit, cmp.lastYearLabel), spark('profit')) +
+    kpi('GP %', fmtGp(cur.gp) + '%', cur.gp < 0,
+      deltaHtml(cur.gp, P && P.gp, cmp.prevLabel, 'pts'), deltaHtml(cur.gp, L && L.gp, cmp.lastYearLabel, 'pts'), spark('gp')) +
+    kpi('Invoices', cur.n.toLocaleString('en-CA'), false,
+      deltaHtml(cur.n, P && P.n, cmp.prevLabel), deltaHtml(cur.n, L && L.n, cmp.lastYearLabel), spark('n')) +
+    kpi('Average invoice', locMoney(cur.avgInvoice), false,
+      deltaHtml(cur.avgInvoice, P && P.avgInvoice, cmp.prevLabel), deltaHtml(cur.avgInvoice, L && L.avgInvoice, cmp.lastYearLabel), spark('avgInvoice')) +
+    kpi('Customers served', cur.customers.toLocaleString('en-CA'), false,
+      deltaHtml(cur.customers, P && P.customers, cmp.prevLabel), deltaHtml(cur.customers, L && L.customers, cmp.lastYearLabel), spark('customers')) +
+    '</div>';
+
+  /* --- side-by-side comparison table --- */
+  const cmpRow = (label, get, fmt, mode) => {
+    const c = get(cur), p = P ? get(P) : null, l = L ? get(L) : null;
+    const d = (v) => {
+      if (v == null) return '<td class="num">—</td>';
+      if (mode === 'pts') {
+        const x = c - v;
+        return '<td class="num" style="color:' + (Math.abs(x) < 0.05 ? 'inherit' : x > 0 ? 'var(--up)' : 'var(--down)') + '">' +
+          (x >= 0 ? '+' : '−') + Math.abs(x).toFixed(1) + ' pts</td>';
+      }
+      const x = pctChange(c, v);
+      if (x == null) return '<td class="num">—</td>';
+      return '<td class="num" style="color:' + (Math.abs(x) < 0.05 ? 'inherit' : x > 0 ? 'var(--up)' : 'var(--down)') + '">' +
+        (x >= 0 ? '+' : '−') + Math.abs(x).toFixed(1) + '%</td>';
+    };
+    return '<tr><td>' + label + '</td><td class="num"><strong>' + fmt(c) + '</strong></td>' +
+      '<td class="num">' + (p == null ? '—' : fmt(p)) + '</td>' + d(p) +
+      '<td class="num">' + (l == null ? '—' : fmt(l)) + '</td>' + d(l) + '</tr>';
+  };
+  const cmpTable = '<table class="ranked"><thead><tr><th>Measure</th><th class="num">This period</th>' +
+    '<th class="num">' + esc(cmp.prevLabel) + '</th><th class="num">Change</th>' +
+    '<th class="num">' + esc(cmp.lastYearLabel) + '</th><th class="num">Change</th></tr></thead><tbody>' +
+    cmpRow('Revenue (Ex HST)', a => a.exHst, locMoney) +
+    cmpRow('Profit', a => a.profit, locMoney) +
+    cmpRow('GP %', a => a.gp, v => fmtGp(v) + '%', 'pts') +
+    cmpRow('Invoices', a => a.n, v => v.toLocaleString('en-CA')) +
+    cmpRow('Average invoice', a => a.avgInvoice, locMoney) +
+    cmpRow('Customers served', a => a.customers, v => v.toLocaleString('en-CA')) +
+    '</tbody></table>';
+
+  /* --- trend --- */
+  const complete = series.filter(s => s.n > 0 && !partial.has(s.mk));
+  const best = complete.slice().sort((a, b) => b.exHst - a.exHst)[0];
+  const worst = complete.slice().sort((a, b) => a.exHst - b.exHst)[0];
+  const trendTable = '<details class="tableview"><summary>Show the monthly figures as a table</summary>' +
+    '<table class="ranked"><thead><tr><th>Month</th><th class="num">Invoices</th><th class="num">Revenue</th>' +
+    '<th class="num">Profit</th><th class="num">GP%</th><th class="num">Avg invoice</th></tr></thead><tbody>' +
+    series.slice().reverse().map(s => '<tr><td>' + MONTH_ABBR[s.mo - 1] + ' ' + s.y +
+      (partial.has(s.mk) ? ' <span style="color:var(--muted)">(partial)</span>' : '') + '</td>' +
+      '<td class="num">' + s.n + '</td><td class="num">' + fmtMoney(s.exHst) + '</td>' +
+      '<td class="num">' + fmtMoney(s.profit) + '</td><td class="num">' + fmtGp(s.gp) + '</td>' +
+      '<td class="num">' + fmtMoney(s.avgInvoice) + '</td></tr>').join('') +
+    '</tbody></table></details>';
+
+  const trendSec = '<div class="dash-sec"><h3>Revenue by month, ' + series[0].y + '–' + series[series.length - 1].y + '</h3>' +
+    '<p class="why">The whole history, with the selected period picked out. ' +
+    (best ? 'Best complete month: <strong>' + MONTH_ABBR[best.mo - 1] + ' ' + best.y + '</strong> at ' + locMoney(best.exHst) + '. ' : '') +
+    (worst ? 'Quietest: <strong>' + MONTH_ABBR[worst.mo - 1] + ' ' + worst.y + '</strong> at ' + locMoney(worst.exHst) + '.' : '') +
+    (partial.size ? ' Faded bars are part-months.' : '') + '</p>' +
+    legendHtml([
+      { color: 'var(--c-sel)', label: 'Selected period' },
+      { color: 'var(--c-ctx)', label: 'Other months' },
+      { color: 'var(--c-ref)', label: '3-month average', line: true },
+    ]) +
+    trendChart(series, 'exHst', selFromMk, selToMk, partial, true) + trendTable + '</div>';
+
+  /* --- year over year --- */
+  const grid = yearMonthGrid(series, 'exHst');
+  const yoyTable = '<details class="tableview"><summary>Show the year-over-year figures as a table</summary>' +
+    '<table class="ranked"><thead><tr><th>Month</th>' + grid.years.map(y => '<th class="num">' + y + '</th>').join('') +
+    '<th class="num">' + grid.years[grid.years.length - 1] + ' vs ' + grid.years[grid.years.length - 2] + '</th></tr></thead><tbody>' +
+    MONTH_ABBR.map((mn, i) => {
+      const last = grid.byYear.get(grid.years[grid.years.length - 1])[i];
+      const prevY = grid.years.length > 1 ? grid.byYear.get(grid.years[grid.years.length - 2])[i] : null;
+      const ch = (last != null && prevY != null) ? pctChange(last, prevY) : null;
+      return '<tr><td>' + mn + '</td>' + grid.years.map(y => {
+        const v = grid.byYear.get(y)[i];
+        return '<td class="num">' + (v == null ? '—' : fmtMoney(v)) + '</td>';
+      }).join('') + '<td class="num" style="color:' + (ch == null ? 'inherit' : ch >= 0 ? 'var(--up)' : 'var(--down)') + '">' +
+        (ch == null ? '—' : (ch >= 0 ? '+' : '−') + Math.abs(ch).toFixed(1) + '%') + '</td></tr>';
+    }).join('') + '</tbody></table></details>';
+
+  const yoySec = grid.years.length > 1 ? '<div class="dash-sec"><h3>Same month, year over year</h3>' +
+    '<p class="why">Each calendar month side by side across ' + grid.years.length + ' years — the comparison that strips out seasonality. ' +
+    (partialYears.size ? 'Note ' + [...partialYears].sort().join(' and ') + ' ' + (partialYears.size > 1 ? 'are' : 'is') + ' partial ' + (partialYears.size > 1 ? 'years' : 'year') + '.' : '') + '</p>' +
+    legendHtml(grid.years.map(y => ({ color: yearColor(y, grid.years), label: String(y) }))) +
+    yoyChart(grid, true) + yoyTable + '</div>' : '';
+
+  /* --- seasonality --- */
+  const seas = seasonalityIndex(series, partial, 'exHst');
+  const seasKnown = seas.filter(s => s.index != null);
+  const seasPeak = seasKnown.slice().sort((a, b) => b.index - a.index)[0];
+  const seasLow = seasKnown.slice().sort((a, b) => a.index - b.index)[0];
+  const seasSec = seasKnown.length >= 6 ? '<div class="dash-sec"><h3>Seasonal shape of the year</h3>' +
+    '<p class="why">Every month indexed against its own year’s average, then averaged across years, so growth between years does not masquerade as season. ' +
+    (seasPeak && seasLow ? '<strong>' + MONTH_ABBR[seasPeak.mo - 1] + '</strong> runs about ' + Math.round(seasPeak.index) +
+      '% of an average month; <strong>' + MONTH_ABBR[seasLow.mo - 1] + '</strong> about ' + Math.round(seasLow.index) + '%.' : '') + '</p>' +
+    seasonChart(seas) + '</div>' : '';
+
+  /* --- category mix --- */
+  let mixSec = '';
+  if (brk.length) {
+    const mix = categoryMixByYear(brk);
+    const names = mix.length ? mix[0].cats.map(c => c.name) : [];
+    const bars = mix.map(m => {
+      const segs = m.cats.filter(c => c.share > 0).map(c => {
+        const col = catColor(c.name, names.indexOf(c.name));
+        const lbl = c.share >= 8 ? '<span style="color:' + inkOn(col) + ';font-size:10.5px;font-weight:700">' + c.share.toFixed(0) + '%</span>' : '';
+        return '<div title="' + esc(c.name) + ': ' + locMoney(c.amount) + ' (' + c.share.toFixed(1) + '%)" style="width:' + c.share +
+          '%;background:' + col + ';display:flex;align-items:center;justify-content:center;border-radius:2px">' + lbl + '</div>';
+      }).join('');
+      return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">' +
+        '<div style="width:74px;font-size:11.5px;font-weight:700;text-align:right">' + m.y +
+        (partialYears.has(m.y) ? '<span style="font-weight:400;color:var(--muted)"> ◦</span>' : '') + '</div>' +
+        '<div style="flex:1;display:flex;gap:2px;height:26px">' + segs + '</div>' +
+        '<div style="width:86px;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums">' + locMoney(m.total) + '</div></div>';
+    }).join('');
+    const perCat = categoryTotalsInRange(brk, dateKeyOfPoint(range.from), dateKeyOfPoint(cmp.to));
+    const mixTable = '<table class="ranked" style="margin-top:12px"><thead><tr><th>Category (selected period)</th>' +
+      '<th class="num">Lines</th><th class="num">Revenue</th><th class="num">Share</th><th class="num">Profit</th><th class="num">GP%</th></tr></thead><tbody>' +
+      perCat.cats.map((c, i) => '<tr><td><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:' +
+        catColor(c.name, names.indexOf(c.name)) + ';margin-right:7px"></i>' + esc(c.name) + '</td>' +
+        '<td class="num">' + c.n.toLocaleString('en-CA') + '</td><td class="num">' + locMoney(c.amount) + '</td>' +
+        '<td class="num">' + c.share.toFixed(1) + '%</td><td class="num">' + locMoney(c.profit) + '</td>' +
+        '<td class="num">' + fmtGp(c.gp) + '</td></tr>').join('') + '</tbody></table>';
+    mixSec = '<div class="dash-sec"><h3>What the money comes from</h3>' +
+      '<p class="why">Share of line-item revenue by category, per year — watch the mix shift, because the categories do not earn alike. ' +
+      'The table below is the selected period only.' + (partialYears.size ? ' ◦ marks a partial year.' : '') + '</p>' +
+      legendHtml(names.map((n, i) => ({ color: catColor(n, i), label: n }))) + bars + mixTable + '</div>';
+  }
+
+  /* --- who and what --- */
+  const tc = topCustomersInRange(sales, dateKeyOfPoint(range.from), dateKeyOfPoint(cmp.to), 10);
+  const nvr = newVsReturning(sales, dateKeyOfPoint(range.from), dateKeyOfPoint(cmp.to));
+  const custTable = rankedTable('Top customers this period', tc.rows, r => r.exHst, r => r.name, null, [
+    { label: 'Inv', width: '44px', cell: r => r.n },
+    { label: 'Revenue', width: '92px', cell: r => locMoney(r.exHst) },
+  ]);
+
+  let itemTable = '';
+  if (items.length) {
+    const ti = topItemsInRange(items, dateKeyOfPoint(range.from), dateKeyOfPoint(cmp.to), 10);
+    itemTable = rankedTable('Top items this period', ti.rows, r => r.sell, r => r.desc || r.code, r => r.code, [
+      { label: 'Qty', width: '44px', cell: r => fmtQty(r.qty) },
+      { label: 'Revenue', width: '92px', cell: r => locMoney(r.sell) },
+    ]);
+  } else if (brk.length) {
+    const map = new Map();
+    for (const r of brk) {
+      if (r.dateKey < dateKeyOfPoint(range.from) || r.dateKey > dateKeyOfPoint(cmp.to)) continue;
+      let it = map.get(r.code);
+      if (!it) { it = { code: r.code, desc: r.desc, n: 0, sell: 0 }; map.set(r.code, it); }
+      it.n++; it.sell += r.amount;
+    }
+    const rows = [...map.values()].sort((a, b) => b.sell - a.sell).slice(0, 10);
+    itemTable = rankedTable('Top line items this period', rows, r => r.sell, r => r.desc || r.code, r => r.code, [
+      { label: 'Lines', width: '48px', cell: r => r.n },
+      { label: 'Revenue', width: '92px', cell: r => locMoney(r.sell) },
+    ]);
+  }
+
+  const whoSec = '<div class="dash-sec"><h3>Who and what drove the period</h3>' +
+    '<p class="why">' + tc.customerCount.toLocaleString('en-CA') + ' customers served — ' +
+    '<strong>' + nvr.fresh.toLocaleString('en-CA') + '</strong> of them new to the shop, ' +
+    nvr.returning.toLocaleString('en-CA') + ' returning' +
+    (tc.rows.length && cur.exHst ? '. The top 10 below are ' +
+      (tc.rows.reduce((a, r) => a + r.exHst, 0) / cur.exHst * 100).toFixed(0) + '% of the period’s revenue.' : '.') + '</p>' +
+    '<div class="dash-split"><div>' + custTable + '</div><div>' + itemTable + '</div></div></div>';
+
+  /* --- vehicles (from the breakup export's Make/Model + plate columns) --- */
+  let vehSec = '';
+  if (brk.length) {
+    const v = vehicleStats(brk, dateKeyOfPoint(range.from), dateKeyOfPoint(cmp.to), 12);
+    // Repeat-visit rates only mean something over the whole history — inside a
+    // single month almost every vehicle is a "one-visit" vehicle by definition.
+    const vAll = vehicleStats(brk, null, null, 1);
+    if (v.makes.length) {
+      const makeTable = rankedTable('Make', v.makes, r => r.amount, r => r.make, null, [
+        { label: 'Vehicles', width: '64px', cell: r => r.vehicles },
+        { label: 'Visits', width: '56px', cell: r => r.visits },
+        { label: 'Revenue', width: '92px', cell: r => locMoney(r.amount) },
+        { label: 'Share', width: '56px', cell: r => (v.totalAmount ? (r.amount / v.totalAmount * 100).toFixed(1) : '0.0') + '%' },
+      ]);
+      vehSec = '<div class="dash-sec"><h3>Vehicles through the shop</h3>' +
+        '<p class="why"><strong>' + v.vehicles.toLocaleString('en-CA') + '</strong> vehicles across ' +
+        v.makeCount + ' makes in this period. Over the whole history, ' +
+        vAll.vehicles.toLocaleString('en-CA') + ' vehicles averaged <strong>' + vAll.avgVisits.toFixed(1) +
+        '</strong> visits each and ' + Math.round(vAll.repeatVehicles / Math.max(1, vAll.vehicles) * 100) +
+        '% came back more than once. What rolls in decides what is worth stocking.</p>' + makeTable + '</div>';
+    }
+  }
+
+  $('sheet').innerHTML = '<div class="dash">' +
+    '<h1 class="dash-head">Sales Dashboard</h1>' +
+    '<p class="dash-sub">' + esc(rangeLabel()) + ' &nbsp;·&nbsp; ' +
+    fmtDateMdy(range.from.y, range.from.mo, range.from.d) + ' – ' + fmtDateMdy(cmp.to.y, cmp.to.mo, cmp.to.d) +
+    (scopeBits.length ? ' &nbsp;·&nbsp; ' + scopeBits.join(' &nbsp;·&nbsp; ') : '') + '</p>' +
+    notices + kpis +
+    '<div class="dash-sec"><h3>This period against the ones that matter</h3>' +
+    '<p class="why">The same measures beside the previous period and the same period a year earlier.</p>' +
+    cmpTable + '</div>' +
+    trendSec + yoySec + seasSec + mixSec + whoSec + vehSec +
+    '<div class="rpt-footer" style="margin-top:20px"><span>' + sales.length.toLocaleString('en-CA') +
+    ' transactions on file · ' + fmtDateMdy(keyToDate(cov.minKey).y, keyToDate(cov.minKey).mo, keyToDate(cov.minKey).d) +
+    ' → ' + fmtDateMdy(keyToDate(cov.maxKey).y, keyToDate(cov.maxKey).mo, keyToDate(cov.maxKey).d) +
+    '</span><span>Date Printed: ' + printedStr + '</span></div>' +
+    '</div>';
+
+  renderCards([]);
+}
+
 function renderCards(cards) {
   $('summary').innerHTML = cards.map(c =>
     `<div class="card"><div class="k">${c.k}</div><div class="v${c.neg ? ' neg' : ''}">${c.v}</div><div class="s">${c.s}</div></div>`).join('');
@@ -1146,7 +2165,8 @@ function renderReport() {
     $('datastrip').innerHTML = '';
     return;
   }
-  if (state.tab === 'breakup') renderBreakupTab();
+  if (state.tab === 'dashboard') renderDashboardTab();
+  else if (state.tab === 'breakup') renderBreakupTab();
   else if (state.tab === 'items') renderItemsTab();
   else renderSalesTab();
   renderDatastrip();
@@ -1191,6 +2211,9 @@ function renderControls() {
   $('fCategory').style.display = state.tab === 'breakup' ? '' : 'none';
   $('fTotalsOnly').style.display = state.tab === 'breakup' ? '' : 'none';
   $('fSort').style.display = state.tab === 'items' ? '' : 'none';
+  // The dashboard always draws the whole history for context, so "all data"
+  // would leave nothing selected to compare — offer only real periods.
+  $('segPeriod').querySelector('button[data-p="all"]').style.display = state.tab === 'dashboard' ? 'none' : '';
 
   const rows = allRows();
   const years = [...new Set(rows.map(r => r.y))].sort();
@@ -1260,7 +2283,7 @@ function importFiles(fileList) {
         if (results.length) {
           const span = dataSpan();
           if (span && state.period === 'month') { state.y = span.max.y; state.mo = span.max.mo; }
-          if (touched.size === 1 && !rowsOf(state.tab).length) state.tab = [...touched][0];
+          if (touched.size === 1 && !rowsOf(TAB_NEEDS[state.tab] || state.tab).length) state.tab = [...touched][0];
           toast('Imported — ' + results.join(' · ') + (failed.length ? `. Could not read: ${failed.join(', ')}` : ''));
         } else {
           toast(`No report rows found in ${failed.join(', ') || 'the selected file(s)'} — expected a Sales, Sales Breakup or Item Sales CSV export.`);
@@ -1276,7 +2299,22 @@ function importFiles(fileList) {
 function exportFiltered() {
   const q = s => '"' + String(s).replace(/"/g, '""') + '"';
   let lines, nameHint;
-  if (state.tab === 'breakup') {
+  if (state.tab === 'dashboard') {
+    // Export the monthly series the dashboard is built on, so it can be
+    // pivoted or charted elsewhere.
+    const f = currentFilters();
+    const sales = applyNonDateFilters(rowsOf('sales'), f, 'sales');
+    const cov = coverageOf(sales);
+    const series = monthlySeries(sales, cov);
+    const partial = partialMonthSet(cov);
+    lines = [['Year', 'Month', 'Partial', 'Invoices', 'Customers', 'Ex HST', 'HST', 'D/C', 'Total', 'Cost Ex. HST', 'Profit', 'GP%', 'Avg invoice'].join(',')];
+    for (const s of series) {
+      lines.push([s.y, MONTH_ABBR[s.mo - 1], partial.has(s.mk) ? 'yes' : 'no', s.n, s.customers,
+        s.exHst.toFixed(2), s.hst.toFixed(2), s.dc.toFixed(2), s.total.toFixed(2),
+        s.cost.toFixed(2), s.profit.toFixed(2), fmtGp(s.gp), s.avgInvoice.toFixed(2)].join(','));
+    }
+    nameHint = 'sales-by-month-';
+  } else if (state.tab === 'breakup') {
     const rep = buildBreakupReport(rowsOf('breakup'), currentFilters());
     lines = [['Category', 'Ref', 'Date', 'Type', 'Customer', 'License', 'Make/Model', 'Item Code', 'Description', 'Amount', 'Cost Ex.', 'HST', 'Profit'].join(',')];
     for (const c of rep.cats) for (const r of c.rows) {
@@ -1381,14 +2419,118 @@ Date,,Invoice Ref,,Item Code,Service Advisor,Description,Supplier,QOH,Qty Sold,S
 ,,,,,,,,,1.00,,$289.00,,$168.00,$168.00
 Page ,1,of ,1,,,,,,Date Printed: 03/01/2025,,,,,,,`;
 
+/* Built-in demo: a few hand-written rows show the import format (they are also
+   in sample-data/), but the dashboard needs years of history to show anything.
+   So the demo button synthesises a fictional but realistically-shaped shop —
+   deterministic, so everyone sees the same numbers. No real customer data. */
+const DEMO_FIRST = ['Alex','Brigitte','Carlos','Dana','Émile','Farah','Grant','Hélène','Ibrahim','Jodie',
+  'Karim','Lucie','Marcus','Nadia','Owen','Priya','Quentin','Rosa','Samir','Tessa','Umar','Véronique','Wes','Yara'];
+const DEMO_LAST = ['Arsenault','Bouchard','Chen','Dubois','Ellis','Fontaine','Gagnon','Haddad','Irving','Joly',
+  'Kowalski','Lemieux','Moreau','Nguyen','O’Brien','Patel','Quesnel','Rivard','Sauvé','Tremblay','Ukwu','Vachon'];
+const DEMO_MAKES = [['HONDA','CIVIC'],['TOYOTA','COROLLA'],['HYUNDAI','ELANTRA'],['FORD','F150'],['MAZDA','CX-5'],
+  ['NISSAN','ROGUE'],['KIA','FORTE'],['SUBARU','OUTBACK'],['VOLKSWAGEN','JETTA'],['CHEVROLET','EQUINOX']];
+const DEMO_SERVICES = [
+  { code: 'LABOUR', desc: 'Brake Pads & Rotors R&R', cat: 'LABOUR', lo: 180, hi: 520, margin: 0.55 },
+  { code: 'LABOUR', desc: 'Oil Change Service', cat: 'LABOUR', lo: 45, hi: 95, margin: 0.60 },
+  { code: 'LABOUR', desc: 'Suspension Control Arm R&R', cat: 'LABOUR', lo: 220, hi: 680, margin: 0.52 },
+  { code: 'LABOUR', desc: 'Seasonal Tire Changeover', cat: 'LABOUR', lo: 60, hi: 110, margin: 0.70 },
+  { code: 'ALIGN', desc: 'Wheel Alignment', cat: 'LABOUR', lo: 95, hi: 145, margin: 0.58 },
+  { code: 'TIRE_NOR', desc: 'All-Season Tire (set of 4)', cat: 'TIRES', lo: 520, hi: 1450, margin: 0.24 },
+  { code: 'TIRE_WIN', desc: 'Winter Tire (set of 4)', cat: 'TIRES', lo: 640, hi: 1680, margin: 0.22 },
+  { code: 'BRAKEPAD', desc: 'Ceramic Brake Pad Set', cat: 'STOCK', lo: 85, hi: 260, margin: 0.45 },
+  { code: 'BATTERY', desc: 'Replacement Battery', cat: 'STOCK', lo: 160, hi: 340, margin: 0.38 },
+  { code: 'FILTERKIT', desc: 'Filter & Fluid Kit', cat: 'STOCK', lo: 40, hi: 130, margin: 0.50 },
+  { code: 'MISCSUPPLIES', desc: 'Shop Supplies', cat: 'CONSUMABLES', lo: 5, hi: 14, margin: 1 },
+  { code: 'DISPFEE', desc: 'Environmental Disposal Fee', cat: 'CONSUMABLES', lo: 3, hi: 12, margin: 1 },
+];
+// Mirrors a Canadian tire shop's real shape: Nov and Apr changeover peaks, Feb trough.
+const DEMO_SEASON = [0.72, 0.51, 0.58, 1.35, 1.28, 1.05, 1.02, 0.88, 0.66, 1.26, 1.56, 1.02];
+
+function buildDemoData() {
+  let seed = 20260917;                       // fixed: everyone sees the same demo
+  const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+  const pick = a => a[Math.floor(rnd() * a.length)];
+  const between = (lo, hi) => lo + rnd() * (hi - lo);
+
+  const customers = [];
+  for (let i = 0; i < 150; i++) {
+    const mk = DEMO_MAKES[Math.floor(rnd() * DEMO_MAKES.length)];
+    customers.push({
+      name: pick(DEMO_FIRST) + ' ' + pick(DEMO_LAST),
+      plate: String.fromCharCode(65 + Math.floor(rnd() * 26), 65 + Math.floor(rnd() * 26),
+        65 + Math.floor(rnd() * 26), 65 + Math.floor(rnd() * 26)) + String(100 + Math.floor(rnd() * 900)),
+      make: mk[0], model: mk[1],
+    });
+  }
+  customers.push({ name: 'Rideau Valley Fleet Services', plate: 'FLEET01', make: 'FORD', model: 'TRANSIT' });
+  customers.push({ name: 'Orleans Courier Co.', plate: 'FLEET02', make: 'NISSAN', model: 'NV200' });
+
+  const sales = [], breakup = [], items = [];
+  let ref = 40000;
+  // Three full years plus a deliberately part-finished month, so the demo also
+  // shows how the dashboard handles an incomplete period.
+  const months = [];
+  for (let y = 2023; y <= 2025; y++) for (let m = 1; m <= 12; m++) months.push([y, m, daysInMonth(y, m)]);
+  months.push([2026, 1, 31], [2026, 2, 28], [2026, 3, 12]);
+
+  for (const [y, mo, lastDay] of months) {
+    const growth = Math.pow(1.08, (y - 2023) + (mo - 1) / 12);
+    const count = Math.round(between(20, 26) * DEMO_SEASON[mo - 1] * growth * (lastDay / daysInMonth(y, mo)));
+    for (let i = 0; i < count; i++) {
+      const c = customers[Math.floor(Math.pow(rnd(), 1.7) * customers.length)];  // a few regulars dominate
+      const d = 1 + Math.floor(rnd() * lastDay);
+      const dateKey = dateKeyOf(y, mo, d);
+      const nLines = 1 + Math.floor(rnd() * 4);
+      let exHst = 0, cost = 0;
+      const myRef = String(++ref);
+      const winter = mo >= 10 || mo <= 3;
+      for (let L = 0; L < nLines; L++) {
+        let svc = DEMO_SERVICES[Math.floor(rnd() * DEMO_SERVICES.length)];
+        if (svc.code === 'TIRE_WIN' && !winter) svc = DEMO_SERVICES[5];
+        if (svc.code === 'TIRE_NOR' && winter && rnd() < 0.6) svc = DEMO_SERVICES[6];
+        const amount = Math.round(between(svc.lo, svc.hi) * 100) / 100;
+        const lineCost = Math.round(amount * (1 - svc.margin) * 100) / 100;
+        exHst += amount; cost += lineCost;
+        breakup.push({
+          ref: myRef, y, mo, d, dateKey, category: svc.cat, code: svc.code, desc: svc.desc,
+          type: 'Invoice', customer: c.name, license: c.plate, vehicle: c.make + ' ' + c.model,
+          amount, cost: lineCost, hst: Math.round(amount * 13) / 100, profit: Math.round((amount - lineCost) * 100) / 100,
+          id: myRef + '|' + dateKey + '|' + svc.code + '|' + amount + '#' + (L + 1),
+        });
+        if (svc.cat === 'TIRES' || svc.cat === 'STOCK') {
+          const qty = svc.cat === 'TIRES' ? 4 : 1;
+          items.push({
+            ref: myRef, y, mo, d, dateKey, code: svc.code, advisor: '', desc: svc.desc,
+            supplier: svc.cat === 'TIRES' ? 'Demo Tire Supply' : 'Demo Parts Co',
+            qty, sell: amount, unitCost: Math.round(lineCost / qty * 100) / 100, cost: lineCost,
+            id: myRef + '|' + dateKey + '|' + svc.code + '|' + amount + '#1',
+          });
+        }
+      }
+      exHst = Math.round(exHst * 100) / 100;
+      cost = Math.round(cost * 100) / 100;
+      const dc = rnd() < 0.06 ? Math.round(exHst * between(0.05, 0.15) * 100) / 100 : 0;
+      const hst = Math.round((exHst - dc) * 13) / 100;
+      sales.push({
+        ref: myRef, y, mo, d, dateKey, type: 'Invoice', customer: c.name, advisor: '', license: c.plate,
+        exHst, hst, dc, total: Math.round((exHst + hst - dc) * 100) / 100,
+        cost, profit: Math.round((exHst - dc - cost) * 100) / 100,
+      });
+    }
+  }
+  return { sales, breakup, items };
+}
+
 async function loadDemo() {
-  mergeRows('sales', extractInvoices(parseCsv(DEMO_CSV)), 'Demo data (built-in)');
-  mergeRows('breakup', extractBreakup(parseCsv(DEMO_BREAKUP)), 'Demo data (built-in)');
-  mergeRows('items', extractItems(parseCsv(DEMO_ITEMS)), 'Demo data (built-in)');
+  const demo = buildDemoData();
+  mergeRows('sales', demo.sales, 'Demo data (built-in)');
+  mergeRows('breakup', demo.breakup, 'Demo data (built-in)');
+  mergeRows('items', demo.items, 'Demo data (built-in)');
   for (const n of DATASETS) await saveDataset(n);
   const span = dataSpan();
   if (span) { state.y = span.max.y; state.mo = span.max.mo; }
-  toast('Demo data loaded — fictional data on all three tabs, just to explore the app.');
+  toast('Demo data loaded — ' + demo.sales.length.toLocaleString('en-CA') +
+    ' fictional invoices over three years. Not real customers.');
   rerender();
 }
 

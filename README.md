@@ -6,12 +6,13 @@ exports and turns each into a filterable, print-ready report:
 
 | Tab | Source export | What it shows |
 | --- | --- | --- |
+| **Dashboard** | (all three) | Trends, month-over-month and year-over-year comparisons, seasonality, category mix, top customers, items and vehicles |
 | **Sales report** | Sales Report | Invoices/credits grouped by customer, with subtotals and a grand total — the same layout as the system's own PDF |
 | **Categories** | Sales Breakup Report | Every line item grouped by category (Labour, Stock, Tires, Consumables, Sublet Repair) with per-category totals and GP% |
 | **Items** | Item Sales Report | Per-product sales rolled up by item code: units sold, revenue, cost, profit and margin |
 
-![Screenshot of the app showing a demo report](docs/screenshot.png)
-*Screenshot uses the built-in fictional demo data.*
+![The dashboard showing KPIs, a monthly trend chart, year-over-year comparison, seasonality and category mix](docs/dashboard.png)
+*Screenshot uses the built-in fictional demo data — no real customers.*
 
 ## Quick start
 
@@ -28,8 +29,57 @@ exports and turns each into a filterable, print-ready report:
 5. Click **Print report**. In the print dialog you can send it to a printer or
    *Save as PDF*.
 
-To try it without real data, click *"…or try it with built-in demo data"* on
-the start screen, or import the fictional files in [`sample-data/`](sample-data).
+To try it without real data, click *"…or try it with built-in demo data"* on the
+start screen: it generates about a thousand fictional invoices across three years,
+so the dashboard has something real-shaped to show. The small files in
+[`sample-data/`](sample-data) are there to show what each import format looks like.
+
+## The dashboard
+
+Open the app and it lands on the dashboard for the most recent month. Everything
+on it respects the period picker and the search box, so you can scope the whole
+view to one month, one year, a custom range — or even one customer.
+
+- **Six headline numbers** — revenue, profit, GP%, invoices, average invoice and
+  customers served, each with its change against the previous period *and* the
+  same period a year earlier, plus a 12-month sparkline.
+- **Revenue by month** — the entire history as a column chart with the selected
+  period picked out, and a 3-month average line over the top. It also names your
+  best and quietest complete months.
+- **Same month, year over year** — every calendar month side by side across all
+  years on file. This is the comparison that strips seasonality out, so you can
+  see whether November was genuinely better or just November.
+- **Seasonal shape of the year** — each month indexed against its own year's
+  average (100 = an average month), then averaged across years, so growth
+  between years cannot masquerade as seasonality.
+- **What the money comes from** — category mix per year as stacked shares, plus
+  revenue, profit and GP% per category for the selected period. The categories
+  do not earn alike, so the mix shifting matters as much as the total.
+- **Who and what drove the period** — top customers and top items, with new vs
+  returning customer counts.
+- **Vehicles through the shop** — makes ranked by revenue, distinct vehicles and
+  repeat-visit rate, from the Make/Model and plate columns of the breakup export.
+
+Every chart is hand-rolled inline SVG (no chart library, nothing downloaded) and
+prints to A4 with the rest of the report.
+
+### Comparisons that do not lie
+
+Three things in this data will produce a badly wrong answer if a dashboard
+ignores them, so this one does not:
+
+1. **Incomplete periods.** The data stops mid-month. Comparing a 3-day-old month
+   against a whole month reads as a collapse. Every comparison here clamps the
+   selected period to the data actually on file and measures the *same* part-period
+   a year earlier. With the 2023–2026 exports, a naive 2026-vs-2025 comparison
+   reads **−31.7%**; the honest like-for-like reads **+11.1%**. A banner appears
+   whenever the selected period is still open.
+2. **The cost-recording change.** Recorded cost jumps from about 31% of revenue
+   to about 53% in October 2023 — a bookkeeping change, not a margin collapse.
+   The app detects that step automatically and warns rather than drawing it as a
+   trend. Treat pre-2023 profit and GP% as overstated.
+3. **The three exports do not reconcile** (see below), so each chart states which
+   one it is drawn from rather than silently mixing them.
 
 ## Features
 
@@ -74,6 +124,11 @@ trusting the export's own summary lines:
 **Items tab** — rows are grouped by item code; `Profit = Revenue − Cost` and
 `Margin% = Profit ÷ Revenue × 100`. Revenue and cost are line totals from the
 export (unit cost is per unit).
+
+**Dashboard** — aggregates the same rows by calendar month. GP% is compared in
+percentage *points* (46% → 48% is "+2.0 pts", not "+4.3%"). The seasonal index is
+each month divided by its own year's average month, averaged across years, with
+incomplete months excluded.
 
 These were verified against the source system to the cent: the app's totals
 match each export's own grand-total row, and its January 2025 report matches
