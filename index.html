@@ -544,9 +544,23 @@ function num(v) {
    a sale, so both go to a separate pipeline dataset rather than being lost. */
 function extractInvoiceTable(rows) {
   const sales = [], pipeline = [];
+  // The export repeats three closed invoices byte for byte (55755, 55766 and
+  // 56712). They inflate revenue by $1,423.90 and, because there are also
+  // exactly three invoices in the report export that are missing here, a
+  // row-count check alone looks like a clean reconciliation while two errors
+  // quietly cancel. Drop them before anything is counted.
+  const seenRow = new Set();
   for (const r of tableRows(rows)) {
     const dt = parseDateCell(r['post_date']);
     if (!dt) continue;
+    // Only closed rows carry an invoice number, and only they are duplicated.
+    // Quotes and open jobs legitimately share job-card shapes, so leave them
+    // alone rather than collapsing distinct estimates.
+    if (r['invoice_number']) {
+      const fingerprint = [r['invoice_number'], r['post_date'], r['total'], r['subtotal']].join('|');
+      if (seenRow.has(fingerprint)) continue;
+      seenRow.add(fingerprint);
+    }
     const invNo = (r['invoice_number'] || '').trim();
     const jobCard = (r['job_card_number'] || '').trim();
     // Quotes and unclosed jobs have no invoice number yet — they are
@@ -629,6 +643,11 @@ function extractInvoiceItemTable(rows) {
       brand: (r['brand'] || '').trim(),
       supplier: (r['product_supplier'] || '').trim(),
       productType: (r['product_type'] || '').trim(),
+      // Service-kit header rows: $0 of revenue but they repeat the cost that
+      // their child lines already carry. Summing cost without excluding them
+      // double-counts $460k. (bundle_parent_item_code is NOT the flag — it is
+      // never blank and mostly self-references, so it needs no handling.)
+      bom: String(r['is_bom_parent'] || '').trim().toLowerCase() === 'true',
       bundleParent: (r['bundle_parent_item_code'] || '').trim(),
       // dateKey / customer are stamped on by relinkLines once invoices load.
       dateKey: 0, y: 0, mo: 0, d: 0, customer: '', license: '', vehicle: '',
@@ -644,13 +663,13 @@ function extractInvoiceItemTable(rows) {
 
 /* --- product table --- */
 function extractProductTable(rows) {
-  const out = [];
+  const byCode = new Map();
   for (const r of tableRows(rows)) {
     const code = (r['item_code'] || '').trim();
     if (!code) continue;
     const qoh = num(r['quantity_on_hand']);
     const cost = num(r['cost']);
-    out.push({
+    const row = {
       code,
       desc: decodeEntities(r['description'] || ''),
       brand: (r['brand'] || '').trim(),
@@ -662,12 +681,20 @@ function extractProductTable(rows) {
       reserved: num(r['qty_reserved']),
       retail: num(r['retail_price']),
       cost,
-      value: Math.round(qoh * cost * 100) / 100,
+      // Stock value never goes negative: thousands of fee and labour
+      // pseudo-items are billed without ever being received, so they sit at
+      // large negative counts and would subtract phantom value from any total.
+      value: qoh > 0 ? Math.round(qoh * cost * 100) / 100 : 0,
       inactive: String(r['inactive'] || '').toLowerCase() === 'true',
       id: code,
-    });
+    };
+    // 37 item codes are reused for genuinely different products. A code's
+    // stock is one number rather than a sum, so keep the row that actually
+    // carries the stock.
+    const prev = byCode.get(code);
+    if (!prev || row.qoh > prev.qoh) byCode.set(code, row);
   }
-  return out;
+  return [...byCode.values()];
 }
 
 // invoiceItem rows carry no date; stamp each from its invoice so the ordinary
@@ -698,7 +725,12 @@ function relinkLines(lines, salesRows, pipelineRows) {
     const sign = s.invType === 'C' ? -1 : 1;
     l.sign = sign;
     l.rev = Math.round(l.subtotal * sign * 100) / 100;
-    l.est = Math.round(l.costIncTax * sign * 100) / 100;
+    // The real line cost. unit_cost x quantity reproduces the invoice header
+    // cost to within 1% for 2024 onwards — and, crucially, carries no step at
+    // Oct 2023, which is when the HEADER field started being recorded
+    // properly. So this is the only cost that is comparable across all
+    // 45 months. cost_including_tax is not a line cost at all (29% under).
+    l.lineCost = l.bom ? 0 : Math.round(l.unitCost * l.qty * sign * 100) / 100;
     l.sold = s.status !== 'O' && s.invType !== 'Q';
     linked++;
   }
@@ -1250,10 +1282,75 @@ function seasonalityIndex(series, partialSet, field) {
   }));
 }
 
-// Cost was under-recorded before the shop started capturing parts cost, which
-// would otherwise read as a margin collapse. Detect the step rather than
-// hard-coding a date: find the month where the trailing cost ratio jumps and
-// stays up. Returns null when the history looks consistent.
+/* True margin, computed from line-level cost.
+
+   The invoice HEADER cost field was not recorded properly before Oct 2023 —
+   it sits at ~33% of revenue until Sep 2023 then steps to ~55%, which reads as
+   a margin collapse that never happened. The LINE cost (unit_cost x quantity,
+   excluding the $0-revenue service-kit header rows) has no such step: 56.2% in
+   Apr 2023, 55.6% in Sep 2023, 58.3% in Oct 2023. From 2024 on the two agree
+   within 1%, so the line figure is both correct and continuous, and it is the
+   only cost comparable across all 45 months.
+
+   The caveat that stops this being read as good news: the shop's internal
+   labour charge rate was cut from a median $64/hr in 2024 to $49 in 2025 while
+   the labour price rose $128 to $139, so most of the apparent margin gain is
+   that change, not trading. Excluding labour the margin is far flatter. */
+function lineMarginAnalysis(lines, coverage) {
+  const sold = lines.filter(l => l.sold && !l.bom && l.dateKey);
+  if (sold.length < 100) return null;
+  const cov = coverage || null;
+  const month = new Map();
+  const year = new Map();
+  const types = new Map();
+  let rev = 0, cost = 0, exLabRev = 0, exLabCost = 0;
+  for (const l of sold) {
+    rev += l.rev; cost += l.lineCost;
+    const mk = mkOfDateKey(l.dateKey);
+    const m = month.get(mk) || { mk, rev: 0, cost: 0 };
+    m.rev += l.rev; m.cost += l.lineCost; month.set(mk, m);
+    const y = year.get(l.y) || { y: l.y, rev: 0, cost: 0, exRev: 0, exCost: 0 };
+    y.rev += l.rev; y.cost += l.lineCost;
+    if (l.productType !== 'J') { y.exRev += l.rev; y.exCost += l.lineCost; exLabRev += l.rev; exLabCost += l.lineCost; }
+    year.set(l.y, y);
+    const t = types.get(l.productType || '?') || { type: l.productType || '?', rev: 0, cost: 0, n: 0 };
+    t.rev += l.rev; t.cost += l.lineCost; t.n++; types.set(l.productType || '?', t);
+  }
+  const gm = (r, c) => r ? (r - c) / r * 100 : 0;
+  const months = [...month.values()].sort((a, b) => a.mk - b.mk)
+    .map(m => Object.assign(m, { gm: gm(m.rev, m.cost) }));
+  const TYPE_LABEL = { S: 'Parts', J: 'Labour', T: 'Tires', W: 'Wheel & tire service' };
+  return {
+    rev, cost, gm: gm(rev, cost),
+    exLabourGm: gm(exLabRev, exLabCost),
+    months,
+    years: [...year.values()].sort((a, b) => a.y - b.y)
+      .map(y => Object.assign(y, { gm: gm(y.rev, y.cost), exGm: gm(y.exRev, y.exCost) })),
+    types: [...types.values()]
+      .filter(t => t.rev > rev * 0.005)
+      .map(t => Object.assign(t, { label: TYPE_LABEL[t.type] || t.type, gm: gm(t.rev, t.cost) }))
+      .sort((a, b) => b.rev - a.rev),
+  };
+}
+
+// Median internal charge rate for labour, per year — the thing that makes the
+// margin trend look better than the trading actually was.
+function labourRateByYear(lines) {
+  const byYear = new Map();
+  for (const l of lines) {
+    if (!l.sold || l.bom || l.code !== 'LABOUR' || !l.y) continue;
+    if (!byYear.has(l.y)) byYear.set(l.y, { y: l.y, cost: [], price: [] });
+    const e = byYear.get(l.y);
+    if (l.unitCost > 0) e.cost.push(l.unitCost);
+    if (l.unitPrice > 0) e.price.push(l.unitPrice);
+  }
+  const med = a => { const b = a.slice().sort((x, y) => x - y); return b.length ? b[Math.floor(b.length / 2)] : null; };
+  return [...byYear.values()].sort((a, b) => a.y - b.y)
+    .map(e => ({ y: e.y, n: e.cost.length, cost: med(e.cost), price: med(e.price) }));
+}
+
+// Kept only so an app fed nothing but the report exports still warns about the
+// header-cost step. With line data loaded, lineMarginAnalysis supersedes it.
 function marginBreakDetect(series) {
   const pts = series.filter(s => s.exHst > 1000 && s.n >= 20);
   if (pts.length < 8) return null;
@@ -2412,12 +2509,23 @@ function renderDashboardTab() {
       'part-period a year earlier (and the equivalent earlier window) rather than a whole one. ' +
       'Comparing it against a full month or year would understate it badly.</div>';
   }
+  const lineMargin = rowsOf('lines').length ? lineMarginAnalysis(rowsOf('lines'), cov) : null;
   const brkPoint = marginBreakDetect(series);
-  if (brkPoint) {
+  if (brkPoint && !lineMargin) {
+    // Only reachable without the invoiceItem table, where there is no better
+    // cost to fall back on.
     notices += '<div class="notice"><b>Cost data changes in ' + MONTH_ABBR[mkMonth(brkPoint.mk) - 1] + ' ' + mkYear(brkPoint.mk) + '.</b>' +
-      'Before then, recorded cost averages ' + (brkPoint.beforeRatio * 100).toFixed(0) + '% of revenue; after, ' +
-      (brkPoint.afterRatio * 100).toFixed(0) + '%. That is a bookkeeping change, not a collapse in margin — ' +
-      'treat profit and GP% before ' + mkYear(brkPoint.mk) + ' as overstated, and compare margins only within the later period.</div>';
+      'Recorded cost averages ' + (brkPoint.beforeRatio * 100).toFixed(0) + '% of revenue before then and ' +
+      (brkPoint.afterRatio * 100).toFixed(0) + '% after — a bookkeeping change rather than a collapse in margin. ' +
+      'Import the <strong>invoiceItem</strong> table and the app can compute the real margin instead of warning about this.</div>';
+  } else if (brkPoint && lineMargin) {
+    notices += '<div class="notice"><b>Your margin did not collapse in ' + mkYear(brkPoint.mk) + '.</b>' +
+      'The invoice-level cost field jumps from ' + (brkPoint.beforeRatio * 100).toFixed(0) + '% of revenue to ' +
+      (brkPoint.afterRatio * 100).toFixed(0) + '% that year, which looks like a collapse but is only when that field started ' +
+      'being filled in properly. Costing the same invoices from their line items shows no step at all. ' +
+      'The KPI tiles above still follow the invoice field so they tie back to your printed reports; ' +
+      '“What you actually make” below uses the line-level cost and is the one comparable across all ' +
+      series.length + ' months.</div>';
   }
 
   /* --- KPI row --- */
@@ -2604,6 +2712,50 @@ function renderDashboardTab() {
     (tc.rows.length && cur.exHst ? '. The top 10 below are ' +
       (tc.rows.reduce((a, r) => a + r.exHst, 0) / cur.exHst * 100).toFixed(0) + '% of the period’s revenue.' : '.') + '</p>' +
     '<div class="dash-split"><div>' + custTable + '</div><div>' + itemTable + '</div></div></div>';
+
+  /* --- true margin from line-level cost --- */
+  let marginSec = '';
+  if (lineMargin && lineMargin.years.length > 1) {
+    const lm = lineMargin;
+    const rates = labourRateByYear(rowsOf('lines'));
+    const rateChanged = rates.length > 1 &&
+      rates.some(r => r.cost != null) &&
+      Math.min(...rates.filter(r => r.cost != null).map(r => r.cost)) <
+      Math.max(...rates.filter(r => r.cost != null).map(r => r.cost)) * 0.9;
+
+    const yearRows = lm.years.map(y => '<tr><td>' + y.y + '</td>' +
+      '<td class="num">' + locMoney(y.rev) + '</td><td class="num">' + locMoney(y.cost) + '</td>' +
+      '<td class="num"><strong>' + y.gm.toFixed(1) + '%</strong></td>' +
+      '<td class="num">' + y.exGm.toFixed(1) + '%</td></tr>').join('');
+    const yearTable = '<table class="ranked"><thead><tr><th>Year</th><th class="num">Revenue</th>' +
+      '<th class="num">Cost of goods</th><th class="num">Margin</th><th class="num">Excluding labour</th>' +
+      '</tr></thead><tbody>' + yearRows +
+      '<tr class="subtotal"><td class="lbl">All years</td><td class="num">' + locMoney(lm.rev) + '</td>' +
+      '<td class="num">' + locMoney(lm.cost) + '</td><td class="num">' + lm.gm.toFixed(1) + '%</td>' +
+      '<td class="num">' + lm.exLabourGm.toFixed(1) + '%</td></tr></tbody></table>';
+
+    const typeRows = lm.types.map(t => '<tr><td>' + esc(t.label) + '</td>' +
+      '<td class="bar" style="width:26%"><i style="width:' + f1(Math.max(0, Math.min(100, t.gm))) + '%"></i></td>' +
+      '<td class="num"><strong>' + t.gm.toFixed(1) + '%</strong></td>' +
+      '<td class="num">' + locMoney(t.rev) + '</td></tr>').join('');
+    const typeTable = '<table class="ranked"><thead><tr><th>Kind of work</th><th></th>' +
+      '<th class="num">Margin</th><th class="num">Revenue</th></tr></thead><tbody>' + typeRows + '</tbody></table>';
+
+    const rateNote = rateChanged
+      ? '<p class="why" style="margin-top:12px"><strong>Read the trend carefully.</strong> The margin climbing in the last two ' +
+        'years is mostly an internal accounting change, not better trading: the labour charge rate booked against each job was cut ' +
+        'from ' + rates.filter(r => r.cost != null).map(r => '$' + r.cost + ' in ' + r.y).join(', ') +
+        ', while the labour price charged went ' + rates.filter(r => r.price != null).map(r => '$' + r.price).join(' → ') +
+        '. The “excluding labour” column strips that out, and it is much flatter — that is the number to judge trading by.</p>'
+      : '';
+
+    marginSec = '<div class="dash-sec"><h3>What you actually make</h3>' +
+      '<p class="why">Margin costed from the individual line items rather than the invoice total, which is the only basis ' +
+      'comparable across the whole history. Service-kit header lines are excluded because they carry their children’s cost ' +
+      'again at zero revenue. Across everything on file: <strong>' + locMoney(lm.rev - lm.cost) + '</strong> gross profit on ' +
+      locMoney(lm.rev) + ' of work, a margin of <strong>' + lm.gm.toFixed(1) + '%</strong>.</p>' +
+      '<div class="dash-split"><div>' + yearTable + '</div><div>' + typeTable + '</div></div>' + rateNote + '</div>';
+  }
 
   /* --- declined work: the quotes that were never taken up --- */
   let declinedSec = '';
@@ -2800,7 +2952,7 @@ function renderDashboardTab() {
     '<div class="dash-sec"><h3>This period against the ones that matter</h3>' +
     '<p class="why">The same measures beside the previous period and the same period a year earlier.</p>' +
     cmpTable + '</div>' +
-    trendSec + yoySec + seasSec + mixSec + whoSec + attachSec + declinedSec + dueSec + vehSec + invSec +
+    trendSec + yoySec + seasSec + marginSec + mixSec + whoSec + attachSec + declinedSec + dueSec + vehSec + invSec +
     '<div class="rpt-footer" style="margin-top:20px"><span>' + sales.length.toLocaleString('en-CA') +
     ' transactions on file · ' + fmtDateMdy(keyToDate(cov.minKey).y, keyToDate(cov.minKey).mo, keyToDate(cov.minKey).d) +
     ' → ' + fmtDateMdy(keyToDate(cov.maxKey).y, keyToDate(cov.maxKey).mo, keyToDate(cov.maxKey).d) +
