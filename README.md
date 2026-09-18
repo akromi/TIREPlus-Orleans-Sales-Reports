@@ -31,6 +31,7 @@ exports and turns each into a filterable, print-ready report:
    | --- | --- | --- |
    | **Reports** | Sales Report, Sales Breakup, Item Sales | The four core tabs |
    | **Database tables** | `invoice`, `invoiceItem`, `product` | Declined work, unbilled job cards, stock analysis, odometer and vehicle data |
+   | **Monthly summaries** | any CSV with `Year`, `Month`, `Jobs`, `Ex Tax` | Extends the trend, year-over-year and seasonality back before the current system |
 
    Invoices merge on their reference, so importing a report export *and* the
    invoice table for the same period does not double-count anything — the
@@ -220,6 +221,35 @@ them:
 
 Use the Sales report tab for "what did we invoice", Categories for "where did
 it come from", and Items for "what moved off the shelf".
+
+## Bringing in history from an older system
+
+The shop ran Garage Partner before moving to Workshop, and that history is worth
+having: it turns a three-year trend into a five-year one. But an old system will
+usually only give you a **monthly total**, not the invoices behind it, so the app
+treats those months as a distinct kind of data.
+
+Any CSV with `Year`, `Month`, `Jobs` and `Ex Tax` columns is recognised as a
+monthly summary. [`legacy-data/monthly-sales-2022-2023Q1.csv`](legacy-data/monthly-sales-2022-2023Q1.csv)
+is the worked example, transcribed from two Garage Partner PDF reports.
+
+What summary months **can** do: revenue by month, year-over-year comparison,
+seasonality, job counts, average invoice. They appear as grey bars in the trend
+chart with their own legend entry, and are marked in the monthly table.
+
+What they **cannot** do: profit, margin, customers, items, vehicles, inventory —
+anything needing an invoice behind it. Those figures show an em dash rather than
+a zero, and the sections that need detail simply cover fewer months.
+
+Two rules the app applies, both of which would otherwise mislead:
+
+- **A summary replaces, it does not add.** Where both exist for a month, the
+  summary wins — those months are ones the shop was on the other system, and the
+  handful of invoices in the newer data are stragglers entered late (12 invoices
+  against 434 real jobs for Jan–Mar 2023). Adding them would double-count.
+- **A comparison window is rebuilt from summaries too.** Otherwise 2023 reads
+  $1.18M when you select it but $989k when 2024 is compared against it. With the
+  fix, 2024 against 2023 is −4.6%; without it, it looked like +14.2%.
 
 ## Privacy
 

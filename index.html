@@ -485,6 +485,8 @@ function parseMoney(s) {
 function detectFormat(rows) {
   // The raw database tables announce themselves in their header row.
   const head = new Set((rows[0] || []).map(h => String(h).trim().toLowerCase()));
+  // Monthly summary: one row per month, no invoice detail at all.
+  if (head.has('month') && head.has('jobs') && (head.has('ex tax') || head.has('ex hst'))) return 'monthly';
   if (head.has('item_code') && head.has('quantity_on_hand')) return 'products';
   if (head.has('invoice_number') && (head.has('unit_cost') || head.has('bundle_parent_item_code'))) return 'lines';
   if (head.has('invoice_number') && head.has('invoice_type') && head.has('post_date')) return 'invoices';
@@ -531,6 +533,48 @@ function tableRows(rows) {
 function num(v) {
   const n = parseFloat(String(v || '').replace(/[$,\s]/g, ''));
   return isFinite(n) ? n : 0;
+}
+
+/* --- monthly summary ---
+   Legacy systems (and the point-of-sale's own month report) can only give a
+   total per month, with no invoices behind it. Those months can still carry
+   the revenue trend, the year-over-year comparison and the seasonal shape —
+   but nothing that needs a customer, an item or a vehicle. They are kept in
+   their own dataset so they can never leak into a section they cannot support.
+
+   Only fields verified against the source are read. The legacy report's
+   cost columns could not be identified with confidence, so no profit or
+   margin is invented for these months. */
+function extractMonthlySummary(rows) {
+  const out = [];
+  for (const r of tableRows(rows)) {
+    const y = parseInt(r['year'], 10);
+    let mo = parseInt(r['month'], 10);
+    if (!mo && r['month']) {
+      const i = MONTH_ABBR.findIndex(m => r['month'].toLowerCase().startsWith(m.toLowerCase()));
+      if (i >= 0) mo = i + 1;
+    }
+    if (!y || !mo || mo < 1 || mo > 12) continue;
+    const exHst = num(r['ex tax'] || r['ex hst']);
+    const tax = num(r['tax'] || r['hst']);
+    const lastDay = daysInMonth(y, mo);
+    out.push({
+      mk: monthKeyOf(y, mo), y, mo,
+      // Dated to the last day of the month so ordinary date filters and the
+      // data-span readout treat it like any other dated row.
+      d: lastDay,
+      dateKey: dateKeyOf(y, mo, lastDay),
+      n: parseInt(r['jobs'] || r['invoices'] || '0', 10) || 0,
+      labour: num(r['labour'] || r['labor']),
+      parts: num(r['parts']),
+      exHst, hst: tax,
+      total: num(r['total inc tax'] || r['total']) || Math.round((exHst + tax) * 100) / 100,
+      source: (r['source'] || 'Monthly summary').trim(),
+      summaryOnly: true,
+      id: y + '-' + String(mo).padStart(2, '0'),
+    });
+  }
+  return out.sort((a, b) => a.mk - b.mk);
 }
 
 /* --- invoice table ---------------------------------------------------
@@ -1185,6 +1229,64 @@ function monthlySeries(rows, coverage) {
   return out;
 }
 
+/* Aggregate a window straight off the monthly series.
+
+   Needed whenever the selected period touches a month that exists only as a
+   summary: the invoice-derived figures would read $0 for 2022 and would
+   understate 2023, whose first quarter came from the older system. Works at
+   month granularity, so it is used only when summaries are actually involved
+   — ordinary periods keep the exact day-level aggregate. */
+function aggregateSeriesRange(series, fromMk, toMk) {
+  const t = emptyAgg();
+  let summaryMonths = 0, detailMonths = 0;
+  for (const m of series) {
+    if (m.mk < fromMk || m.mk > toMk) continue;
+    t.n += m.n; t.exHst += m.exHst; t.hst += m.hst; t.dc += m.dc || 0;
+    t.total += m.total; t.cost += m.cost || 0; t.profit += m.profit || 0;
+    if (m.summaryOnly) summaryMonths++;
+    else if (m.n > 0) detailMonths++;
+  }
+  t.gp = gpPercent(t.exHst, t.dc, t.profit);
+  t.avgInvoice = t.n ? t.exHst / t.n : 0;
+  // A month total cannot tell you how many distinct customers were behind it.
+  t.customers = null;
+  t.summaryMonths = summaryMonths;
+  t.detailMonths = detailMonths;
+  t.hasSummary = summaryMonths > 0;
+  return t;
+}
+
+/* Fold monthly summaries into the invoice-derived series.
+
+   Where a summary exists it WINS, rather than being added: the months it
+   covers are ones the shop was on a different system, and the few invoices
+   that exist for them in the newer data are stragglers entered late (12
+   invoices against 434 real jobs for Jan-Mar 2023). Adding the two would
+   double-count; letting the summary stand is the truthful reading.
+
+   Summary months carry no cost, so they get no profit or margin — anything
+   reading those fields must check summaryOnly first. */
+function mergeMonthlySummaries(series, summaries) {
+  if (!summaries || !summaries.length) return series;
+  const byMk = new Map(series.map(m => [m.mk, m]));
+  for (const sm of summaries) {
+    byMk.set(sm.mk, {
+      mk: sm.mk, y: sm.y, mo: sm.mo,
+      n: sm.n, exHst: sm.exHst, hst: sm.hst, dc: 0,
+      total: sm.total, cost: 0, profit: 0, gp: 0,
+      customers: 0,
+      avgInvoice: sm.n ? sm.exHst / sm.n : 0,
+      summaryOnly: true, source: sm.source,
+    });
+  }
+  const keys = [...byMk.keys()].sort((a, b) => a - b);
+  const out = [];
+  for (let mk = keys[0]; mk <= keys[keys.length - 1]; mk = addMonths(mk, 1)) {
+    out.push(byMk.get(mk) || Object.assign({ mk, y: mkYear(mk), mo: mkMonth(mk) }, emptyAgg()));
+  }
+  return out;
+}
+
 function movingAverage(series, field, window) {
   return series.map((_, i) => {
     const from = Math.max(0, i - window + 1);
@@ -1352,7 +1454,7 @@ function labourRateByYear(lines) {
 // Kept only so an app fed nothing but the report exports still warns about the
 // header-cost step. With line data loaded, lineMarginAnalysis supersedes it.
 function marginBreakDetect(series) {
-  const pts = series.filter(s => s.exHst > 1000 && s.n >= 20);
+  const pts = series.filter(s => !s.summaryOnly && s.exHst > 1000 && s.n >= 20);
   if (pts.length < 8) return null;
   const ratio = s => s.cost / s.exHst;
   let best = null;
@@ -1864,13 +1966,14 @@ function newVsReturning(rows, fromKey, toKey) {
 const DB_NAME = 'tireplus-sales';
 const LEGACY_KEY = 'tireplusSales.data.v1';
 const FILTER_KEY = 'tireplusSales.filters.v3';
-const DATASETS = ['sales', 'breakup', 'items', 'lines', 'products', 'pipeline'];
+const DATASETS = ['sales', 'breakup', 'items', 'lines', 'products', 'pipeline', 'monthly'];
 const DATASET_LABEL = {
   sales: 'Invoices', breakup: 'Sales breakup', items: 'Item sales',
   lines: 'Invoice lines', products: 'Products', pipeline: 'Quotes & open jobs',
+  monthly: 'Monthly summaries',
 };
 // Datasets that carry a transaction date and therefore drive the period filter.
-const DATED_DATASETS = ['sales', 'breakup', 'items'];
+const DATED_DATASETS = ['sales', 'breakup', 'items', 'monthly'];
 
 // store[name] = { rows: [...], files: [{name, count, at}] }
 let store = { sales: null, breakup: null, items: null };
@@ -2394,10 +2497,13 @@ function trendChart(series, field, selFrom, selTo, partialSet, moneyFmt) {
     const h = Math.max(v > 0 ? 1.5 : 0, padT + plotH - yOf(v));
     const sel = s.mk >= selFrom && s.mk <= selTo;
     const isPartial = partialSet.has(s.mk);
+    const fill = s.summaryOnly ? 'var(--muted-ink)' : sel ? 'var(--c-sel)' : 'var(--c-ctx)';
     if (v > 0) {
-      bars += '<path d="' + barPath(x, yOf(v), bw, h, 2.5) + '" fill="' + (sel ? 'var(--c-sel)' : 'var(--c-ctx)') + '"' +
+      bars += '<path d="' + barPath(x, yOf(v), bw, h, 2.5) + '" fill="' + fill + '"' +
         (isPartial ? ' opacity="0.45"' : '') + '><title>' + esc(MONTH_ABBR[s.mo - 1] + ' ' + s.y) + ': ' +
-        (moneyFmt ? fmtMoney(v) : v) + (isPartial ? ' (partial month)' : '') + '</title></path>';
+        (moneyFmt ? fmtMoney(v) : v) +
+        (s.summaryOnly ? ' (monthly total only — no invoice detail)' : '') +
+        (isPartial ? ' (partial month)' : '') + '</title></path>';
     }
     if (s.mo === 1 || i === 0) {
       labels += '<text class="tick b" x="' + f1(padL + i * band + band / 2) + '" y="' + (H - 10) + '" text-anchor="middle">' + s.y + '</text>';
@@ -2546,13 +2652,56 @@ function renderDashboardTab() {
   }
 
   const cov = coverageOf(sales);
-  const series = monthlySeries(sales, cov);
+  // Months that exist only as a summary extend the trend back before the
+  // invoice history begins; everything downstream must respect summaryOnly.
+  const summaries = rowsOf('monthly');
+  const series = mergeMonthlySummaries(monthlySeries(sales, cov), summaries);
   const partial = partialMonthSet(cov);
   const partialYears = partialYearSet(cov);
   const cmp = periodComparison(sales, range, state.period, cov);
-  const cur = cmp.current;
   const selFromMk = mkOfDateKey(dateKeyOfPoint(range.from));
   const selToMk = mkOfDateKey(dateKeyOfPoint(range.to));
+
+  // If any month in the selected window (or in a window being compared against)
+  // exists only as a summary, take the whole comparison off the merged series
+  // instead — otherwise 2022 reads $0 and 2023 loses its first quarter.
+  const summaryInWindow = mk => series.some(m => m.summaryOnly && m.mk >= mk[0] && m.mk <= mk[1]);
+  let cur = cmp.current;
+  let usingSummary = false;
+  if (summaries.length) {
+    const curWin = [selFromMk, selToMk];
+    const pwTest = state.period === 'year'
+      ? [addMonths(selFromMk, -12), addMonths(selToMk, -12)]
+      : [addMonths(selFromMk, -1), addMonths(selToMk, -1)];
+    const lwTest = [addMonths(selFromMk, -12), addMonths(selToMk, -12)];
+    // Rebuild from the series whenever the selected period OR either window it
+    // is compared against touches a summary month — otherwise 2023 reads
+    // $1.18M when selected but $989k when 2024 is compared against it.
+    if (summaryInWindow(curWin) || summaryInWindow(pwTest) || summaryInWindow(lwTest)) {
+      if (summaryInWindow(curWin)) {
+        cur = aggregateSeriesRange(series, curWin[0], curWin[1]);
+        usingSummary = true;
+      }
+      // Recompute the comparison windows from the series too — and do it even
+      // where the invoice-based comparison was empty, because that is exactly
+      // the case the summaries exist to fill (2023 against 2022).
+      const hasData = (a, b) => series.some(m => m.mk >= a && m.mk <= b && m.n > 0);
+      const pw = state.period === 'year'
+        ? [addMonths(selFromMk, -12), addMonths(selToMk, -12)]
+        : [addMonths(selFromMk, -1), addMonths(selToMk, -1)];
+      cmp.prev = hasData(pw[0], pw[1]) ? aggregateSeriesRange(series, pw[0], pw[1]) : null;
+      const lw = [addMonths(selFromMk, -12), addMonths(selToMk, -12)];
+      cmp.lastYear = hasData(lw[0], lw[1]) ? aggregateSeriesRange(series, lw[0], lw[1]) : null;
+      if (!cmp.prevLabel) {
+        cmp.prevLabel = state.period === 'year' ? String(mkYear(pw[0]))
+          : MONTH_ABBR[mkMonth(pw[0]) - 1] + ' ' + mkYear(pw[0]);
+      }
+      if (!cmp.lastYearLabel) {
+        cmp.lastYearLabel = state.period === 'year' ? String(mkYear(lw[0]))
+          : MONTH_ABBR[mkMonth(lw[0]) - 1] + ' ' + mkYear(lw[0]);
+      }
+    }
+  }
 
   /* --- notices: the things that would otherwise produce a false reading --- */
   let notices = '';
@@ -2563,6 +2712,17 @@ function renderDashboardTab() {
       'part-period a year earlier (and the equivalent earlier window) rather than a whole one. ' +
       'Comparing it against a full month or year would understate it badly.</div>';
   }
+  if (usingSummary) {
+    notices += '<div class="notice"><b>' +
+      (cur.detailMonths ? 'Part of this period' : 'This period') +
+      ' comes from monthly totals only.</b>' +
+      (cur.detailMonths
+        ? 'Some months here predate the current system and exist only as a month total, so the figures below combine the two. '
+        : 'These months predate the current system and exist only as a month total. ') +
+      'Revenue and job counts are sound; profit, margin and customer counts are not available for them, and the sections ' +
+      'further down that need invoice, item or vehicle detail cover only the months that have it.</div>';
+  }
+
   const lineMargin = rowsOf('lines').length ? lineMarginAnalysis(rowsOf('lines'), cov) : null;
   const brkPoint = marginBreakDetect(series);
   if (brkPoint && !lineMargin) {
@@ -2590,29 +2750,45 @@ function renderDashboardTab() {
   const sparkCur = sparkSlice.length - 1;
   const spark = fld => sparkColumns(sparkSlice.map(s => s[fld]), sparkCur);
   const P = cmp.prev, L = cmp.lastYear;
+  // A period made of monthly totals has no cost, so its profit and GP read as
+  // zero. Comparing against that would invent a swing of the entire margin.
+  const costly = a => (a && (a.summaryMonths === undefined || a.detailMonths) ? a : null);
+  const Pc = costly(P), Lc = costly(L);
   const kpi = (k, v, neg, dA, dB, sp) =>
     '<div class="kpi"><div class="k">' + k + '</div><div class="v' + (neg ? ' neg' : '') + '">' + v + '</div>' +
     '<div class="deltas">' + dA + dB + '</div>' + (sp || '') + '</div>';
   const kpis = '<div class="kpis">' +
     kpi('Revenue (Ex HST)', locMoney(cur.exHst), cur.exHst < 0,
       deltaHtml(cur.exHst, P && P.exHst, cmp.prevLabel), deltaHtml(cur.exHst, L && L.exHst, cmp.lastYearLabel), spark('exHst')) +
-    kpi('Profit', locMoney(cur.profit), cur.profit < 0,
-      deltaHtml(cur.profit, P && P.profit, cmp.prevLabel), deltaHtml(cur.profit, L && L.profit, cmp.lastYearLabel), spark('profit')) +
-    kpi('GP %', fmtGp(cur.gp) + '%', cur.gp < 0,
-      deltaHtml(cur.gp, P && P.gp, cmp.prevLabel, 'pts'), deltaHtml(cur.gp, L && L.gp, cmp.lastYearLabel, 'pts'), spark('gp')) +
+    (usingSummary && !cur.detailMonths
+      ? '<div class="kpi"><div class="k">Profit</div><div class="v"><span style="color:var(--muted)">—</span></div>' +
+        '<div class="deltas"><span class="d">no cost in a monthly total</span></div></div>' +
+        '<div class="kpi"><div class="k">GP %</div><div class="v"><span style="color:var(--muted)">—</span></div>' +
+        '<div class="deltas"><span class="d">no cost in a monthly total</span></div></div>'
+      : kpi('Profit', locMoney(cur.profit), cur.profit < 0,
+          deltaHtml(cur.profit, Pc && Pc.profit, cmp.prevLabel), deltaHtml(cur.profit, Lc && Lc.profit, cmp.lastYearLabel), spark('profit')) +
+        kpi('GP %', fmtGp(cur.gp) + '%', cur.gp < 0,
+          deltaHtml(cur.gp, Pc && Pc.gp, cmp.prevLabel, 'pts'), deltaHtml(cur.gp, Lc && Lc.gp, cmp.lastYearLabel, 'pts'), spark('gp'))) +
     kpi('Invoices', cur.n.toLocaleString('en-CA'), false,
       deltaHtml(cur.n, P && P.n, cmp.prevLabel), deltaHtml(cur.n, L && L.n, cmp.lastYearLabel), spark('n')) +
     kpi('Average invoice', locMoney(cur.avgInvoice), false,
       deltaHtml(cur.avgInvoice, P && P.avgInvoice, cmp.prevLabel), deltaHtml(cur.avgInvoice, L && L.avgInvoice, cmp.lastYearLabel), spark('avgInvoice')) +
-    kpi('Customers served', cur.customers.toLocaleString('en-CA'), false,
-      deltaHtml(cur.customers, P && P.customers, cmp.prevLabel), deltaHtml(cur.customers, L && L.customers, cmp.lastYearLabel), spark('customers')) +
+    kpi('Customers served',
+      cur.customers == null ? '<span style="color:var(--muted)">—</span>' : cur.customers.toLocaleString('en-CA'),
+      false,
+      cur.customers == null ? '<span class="d">not in a monthly total</span>' : deltaHtml(cur.customers, P && P.customers, cmp.prevLabel),
+      cur.customers == null ? '' : deltaHtml(cur.customers, L && L.customers, cmp.lastYearLabel),
+      cur.customers == null ? '' : spark('customers')) +
     '</div>';
 
   /* --- side-by-side comparison table --- */
   const cmpRow = (label, get, fmt, mode) => {
     const c = get(cur), p = P ? get(P) : null, l = L ? get(L) : null;
+    // A month total carries no customer count, and no cost, so some measures
+    // are simply unknowable for periods drawn from summaries.
+    const show = v => (v == null ? '<span style="color:var(--muted)">—</span>' : fmt(v));
     const d = (v) => {
-      if (v == null) return '<td class="num">—</td>';
+      if (v == null || c == null) return '<td class="num">—</td>';
       if (mode === 'pts') {
         const x = c - v;
         return '<td class="num" style="color:' + (Math.abs(x) < 0.05 ? 'inherit' : x > 0 ? 'var(--up)' : 'var(--down)') + '">' +
@@ -2623,22 +2799,23 @@ function renderDashboardTab() {
       return '<td class="num" style="color:' + (Math.abs(x) < 0.05 ? 'inherit' : x > 0 ? 'var(--up)' : 'var(--down)') + '">' +
         (x >= 0 ? '+' : '−') + Math.abs(x).toFixed(1) + '%</td>';
     };
-    return '<tr><td>' + label + '</td><td class="num"><strong>' + fmt(c) + '</strong></td>' +
-      '<td class="num">' + (p == null ? '—' : fmt(p)) + '</td>' + d(p) +
-      '<td class="num">' + (l == null ? '—' : fmt(l)) + '</td>' + d(l) + '</tr>';
+    return '<tr><td>' + label + '</td><td class="num"><strong>' + show(c) + '</strong></td>' +
+      '<td class="num">' + show(p) + '</td>' + d(p) +
+      '<td class="num">' + show(l) + '</td>' + d(l) + '</tr>';
   };
   const cmpTable = '<table class="ranked"><thead><tr><th>Measure</th><th class="num">This period</th>' +
     '<th class="num">' + esc(cmp.prevLabel) + '</th><th class="num">Change</th>' +
     '<th class="num">' + esc(cmp.lastYearLabel) + '</th><th class="num">Change</th></tr></thead><tbody>' +
     cmpRow('Revenue (Ex HST)', a => a.exHst, locMoney) +
-    cmpRow('Profit', a => a.profit, locMoney) +
-    cmpRow('GP %', a => a.gp, v => fmtGp(v) + '%', 'pts') +
+    cmpRow('Profit', a => (a.summaryMonths && !a.detailMonths ? null : a.profit), locMoney) +
+    cmpRow('GP %', a => (a.summaryMonths && !a.detailMonths ? null : a.gp), v => fmtGp(v) + '%', 'pts') +
     cmpRow('Invoices', a => a.n, v => v.toLocaleString('en-CA')) +
     cmpRow('Average invoice', a => a.avgInvoice, locMoney) +
     cmpRow('Customers served', a => a.customers, v => v.toLocaleString('en-CA')) +
     '</tbody></table>';
 
   /* --- trend --- */
+  const summaryMonths = series.filter(s => s.summaryOnly);
   const complete = series.filter(s => s.n > 0 && !partial.has(s.mk));
   const best = complete.slice().sort((a, b) => b.exHst - a.exHst)[0];
   const worst = complete.slice().sort((a, b) => a.exHst - b.exHst)[0];
@@ -2646,9 +2823,12 @@ function renderDashboardTab() {
     '<table class="ranked"><thead><tr><th>Month</th><th class="num">Invoices</th><th class="num">Revenue</th>' +
     '<th class="num">Profit</th><th class="num">GP%</th><th class="num">Avg invoice</th></tr></thead><tbody>' +
     series.slice().reverse().map(s => '<tr><td>' + MONTH_ABBR[s.mo - 1] + ' ' + s.y +
-      (partial.has(s.mk) ? ' <span style="color:var(--muted)">(partial)</span>' : '') + '</td>' +
+      (partial.has(s.mk) ? ' <span style="color:var(--muted)">(partial)</span>' : '') +
+      (s.summaryOnly ? ' <span style="color:var(--muted)">(' + esc(s.source || 'summary') + ')</span>' : '') + '</td>' +
       '<td class="num">' + s.n + '</td><td class="num">' + fmtMoney(s.exHst) + '</td>' +
-      '<td class="num">' + fmtMoney(s.profit) + '</td><td class="num">' + fmtGp(s.gp) + '</td>' +
+      (s.summaryOnly
+        ? '<td class="num" style="color:var(--muted)">—</td><td class="num" style="color:var(--muted)">—</td>'
+        : '<td class="num">' + fmtMoney(s.profit) + '</td><td class="num">' + fmtGp(s.gp) + '</td>') +
       '<td class="num">' + fmtMoney(s.avgInvoice) + '</td></tr>').join('') +
     '</tbody></table></details>';
 
@@ -2656,12 +2836,16 @@ function renderDashboardTab() {
     '<p class="why">The whole history, with the selected period picked out. ' +
     (best ? 'Best complete month: <strong>' + MONTH_ABBR[best.mo - 1] + ' ' + best.y + '</strong> at ' + locMoney(best.exHst) + '. ' : '') +
     (worst ? 'Quietest: <strong>' + MONTH_ABBR[worst.mo - 1] + ' ' + worst.y + '</strong> at ' + locMoney(worst.exHst) + '.' : '') +
-    (partial.size ? ' Faded bars are part-months.' : '') + '</p>' +
+    (partial.size ? ' Faded bars are part-months.' : '') +
+    (summaryMonths.length
+      ? ' The ' + summaryMonths.length + ' grey months came from ' + esc(summaryMonths[0].source || 'an older system') +
+        ' as monthly totals only, so they carry revenue and job counts but no customer, item or profit detail.'
+      : '') + '</p>' +
     legendHtml([
       { color: 'var(--c-sel)', label: 'Selected period' },
       { color: 'var(--c-ctx)', label: 'Other months' },
-      { color: 'var(--c-ref)', label: '3-month average', line: true },
-    ]) +
+    ].concat(summaryMonths.length ? [{ color: 'var(--muted-ink)', label: 'Monthly total only (older system)' }] : [])
+      .concat([{ color: 'var(--c-ref)', label: '3-month average', line: true }])) +
     trendChart(series, 'exHst', selFromMk, selToMk, partial, true) + trendTable + '</div>';
 
   /* --- year over year --- */
@@ -3203,6 +3387,7 @@ function importFiles(fileList) {
             fmt === 'items' ? extractItems(rows) :
             fmt === 'lines' ? extractInvoiceItemTable(rows) :
             fmt === 'products' ? extractProductTable(rows) :
+            fmt === 'monthly' ? extractMonthlySummary(rows) :
             extractInvoices(rows);
           if (!parsed.length) failed.push(f.name);
           else {
@@ -3242,11 +3427,12 @@ function exportFiltered() {
     const f = currentFilters();
     const sales = applyNonDateFilters(rowsOf('sales'), f, 'sales');
     const cov = coverageOf(sales);
-    const series = monthlySeries(sales, cov);
+    const series = mergeMonthlySummaries(monthlySeries(sales, cov), rowsOf('monthly'));
     const partial = partialMonthSet(cov);
-    lines = [['Year', 'Month', 'Partial', 'Invoices', 'Customers', 'Ex HST', 'HST', 'D/C', 'Total', 'Cost Ex. HST', 'Profit', 'GP%', 'Avg invoice'].join(',')];
+    lines = [['Year', 'Month', 'Detail', 'Partial', 'Invoices', 'Customers', 'Ex HST', 'HST', 'D/C', 'Total', 'Cost Ex. HST', 'Profit', 'GP%', 'Avg invoice'].join(',')];
     for (const s of series) {
-      lines.push([s.y, MONTH_ABBR[s.mo - 1], partial.has(s.mk) ? 'yes' : 'no', s.n, s.customers,
+      lines.push([s.y, MONTH_ABBR[s.mo - 1], s.summaryOnly ? 'summary only' : 'full',
+        partial.has(s.mk) ? 'yes' : 'no', s.n, s.customers,
         s.exHst.toFixed(2), s.hst.toFixed(2), s.dc.toFixed(2), s.total.toFixed(2),
         s.cost.toFixed(2), s.profit.toFixed(2), fmtGp(s.gp), s.avgInvoice.toFixed(2)].join(','));
     }
